@@ -10,6 +10,7 @@ import java.util.List;
 @Repository
 public interface CourseRepository extends JpaRepository<Course, Long> {
     List<Course> findByDepartmentIdAndYear(Long departmentId, int year);
+    List<Course> findByDepartmentIdAndYearAndDayOfWeek(Long departmentId, int year, String dayOfWeek);
 
     @Query("SELECT c FROM Course c WHERE c.dayOfWeek = :dayOfWeek AND c.location = :location " +
             "AND ((c.startTime < :endTime AND c.endTime > :startTime) OR " +

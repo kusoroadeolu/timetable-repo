@@ -9,53 +9,78 @@
     <h2>Student Timetable</h2>
 
     <form th:action="@{/student/timetable}" method="get" class="mb-3">
+        <input type="hidden" name="departmentId" th:value="${selectedDepartmentId}">
+        <input type="hidden" name="year" th:value="${selectedYear}">
         <div class="row">
             <div class="col">
-                <select name="departmentId" class="form-select">
-                    <option value="">Select Department</option>
-                    <option th:each="dept : ${departments}"
-                            th:value="${dept.id}"
-                            th:text="${dept.name}"
-                            th:selected="${dept.id == selectedDepartmentId}"></option>
+                <label for="dayOfWeek">Day of Week</label>
+                <select name="dayOfWeek" id="dayOfWeek" class="form-select">
+                    <option value="">All Days</option>
+                    <option th:each="day : ${daysOfWeek}" th:value="${day}" th:text="${day}" th:selected="${day == selectedDayOfWeek}"></option>
                 </select>
             </div>
             <div class="col">
-                <select name="year" class="form-select">
-                    <option value="">Select Year</option>
-                    <option value="1" th:selected="${selectedYear == 1}">Year 1</option>
-                    <option value="2" th:selected="${selectedYear == 2}">Year 2</option>
-                </select>
-            </div>
-            <div class="col">
-                <button type="submit" class="btn btn-primary">View Timetable</button>
+                <button type="submit" class="btn btn-primary mt-4">Load Timetable</button>
             </div>
         </div>
     </form>
 
     <div th:if="${courses != null}">
-        <table class="table table-striped">
+        <table class="table table-striped" th:unless="${#lists.isEmpty(courses)}">
             <thead>
             <tr>
-                <th>Course Name</th>
+                <th>Course Code</th>
                 <th>Day</th>
                 <th>Start Time</th>
                 <th>End Time</th>
                 <th>Location</th>
-                <th>Coordinator</th>
+                <th>Lecturer</th>
+                <th>Action</th>
             </tr>
             </thead>
             <tbody>
             <tr th:each="course : ${courses}">
-                <td th:text="${course.name}"></td>
+                <td th:text="${course.code}"></td>
                 <td th:text="${course.dayOfWeek}"></td>
                 <td th:text="${course.startTime}"></td>
                 <td th:text="${course.endTime}"></td>
                 <td th:text="${course.location}"></td>
-                <td th:text="${course.coordinator.username}"></td>
+                <td th:text="${course.lecturer.name}"></td>
+                <td>
+                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                            th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
+                </td>
             </tr>
             </tbody>
         </table>
+        <p th:if="${#lists.isEmpty(courses)}" class="text-muted">No courses found for this selection.</p>
+    </div>
+
+    <div th:each="course : ${courses}" th:id="'courseModal' + ${course.id}" class="modal fade" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" th:text="${course.code} + ' Details'"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Course Name:</strong> <span th:text="${course.name}"></span></p>
+                    <p><strong>Credits:</strong> <span th:text="${course.credits}"></span></p>
+                    <p><strong>eLearning Link:</strong>
+                        <a th:if="${course.elearningLink}" th:href="${course.elearningLink}" target="_blank">Access Course</a>
+                        <span th:unless="${course.elearningLink}">Not available</span>
+                    </p>
+                    <p><strong>Lecturer Email:</strong> <span th:text="${course.lecturer.email}"></span></p>
+                    <p><strong>Coordinator:</strong> <span th:text="${course.coordinator.username}"></span></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
