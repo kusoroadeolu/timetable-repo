@@ -1,10 +1,132 @@
 <!DOCTYPE html>
-<html lang="en">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <title>View Courses</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .course-card { margin-bottom: 20px; }
+        .course-code { font-weight: bold; font-size: 1.2rem; }
+        .badge-elearning { background-color: #28a745; }
+        .back-to-top { position: fixed; bottom: 20px; right: 20px; display: none; }
+        .details-btn { margin-left: auto; }
+    </style>
 </head>
 <body>
-$END$
+<div class="container mt-4">
+    <h2>View Courses</h2>
+    <div class="mb-3">
+        <a th:href="@{/student/timetable(departmentId=${selectedDepartmentId}, year=${selectedYear})}" class="btn btn-outline-primary">View Timetable</a>
+    </div>
+    <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+
+    <div th:if="${selectedDepartmentId == null or selectedYear == null}">
+        <form th:action="@{/student/courses}" method="get" class="mb-3">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="departmentId" class="form-label">Department</label>
+                    <select name="departmentId" id="departmentId" class="form-select" required>
+                        <option value="">Select Department</option>
+                        <option th:each="dept : ${departments}" th:value="${dept.id}" th:text="${dept.name}"></option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="year" class="form-label">Year</label>
+                    <select name="year" id="year" class="form-select" required>
+                        <option value="">Select Year</option>
+                        <option th:each="yr : ${years}" th:value="${yr}" th:text="${yr}"></option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary mt-4">View Courses</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div th:if="${selectedDepartmentId != null and selectedYear != null}">
+        <div th:if="${courses != null}">
+            <div id="coursesContainer" class="row">
+                <div th:each="course : ${courses}" class="col-md-6 col-lg-4 course-card">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h5 class="course-code" th:text="${course.courseDefinition.code}"></h5>
+                                    <p class="card-text" th:text="${course.courseDefinition.name}"></p>
+                                    <p class="card-text">
+                                        <i class="fas fa-chalkboard-teacher"></i>
+                                        <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span>
+                                    </p>
+                                    <p class="card-text">
+                                        <i class="fas fa-users"></i>
+                                        <span th:text="${course.totalStudents != null ? course.totalStudents + ' Students' : 'N/A'}"></span>
+                                    </p>
+                                    <div th:if="${course.courseDefinition.elearningLink != null}" class="badge badge-elearning">eLearning Available</div>
+                                </div>
+                                <button type="button" class="btn btn-info btn-sm details-btn" data-bs-toggle="modal"
+                                        th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p th:if="${#lists.isEmpty(courses)}" class="text-muted">No courses found for this selection.</p>
+        </div>
+    </div>
+
+    <div th:each="course : ${courses}" th:id="'courseModal' + ${course.id}" class="modal fade" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" th:text="${course.courseDefinition.code} + ' - ' + ${course.courseDefinition.name}"></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Credits:</strong> <span th:text="${course.courseDefinition != null ? course.courseDefinition.credits : 'N/A'}"></span></p>
+                            <p><strong>Status:</strong> <span th:text="${course.status}"></span></p>
+                            <p><strong>Total Students:</strong> <span th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>First-Time Students:</strong> <span th:text="${course.firstTimeStudents != null ? course.firstTimeStudents : 'N/A'}"></span></p>
+                            <p><strong>Carryover Students:</strong> <span th:text="${course.carryoverStudents != null ? course.carryoverStudents : 'N/A'}"></span></p>
+                            <p><strong>Lecturer:</strong> <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span></p>
+                            <p><strong>eLearning Link:</strong>
+                                <a th:if="${course.courseDefinition.elearningLink != null}" th:href="${course.courseDefinition.elearningLink}" target="_blank" class="btn btn-success btn-sm">Access Course</a>
+                                <span th:unless="${course.courseDefinition.elearningLink != null}" class="text-muted">Not available</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="backToTop" class="btn btn-primary back-to-top" onclick="scrollToTop()">Back to Top</button>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    window.onscroll = function() {
+        var btn = document.getElementById('backToTop');
+        if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+            btn.style.display = 'block';
+        } else {
+            btn.style.display = 'none';
+        }
+    };
+</script>
 </body>
 </html>

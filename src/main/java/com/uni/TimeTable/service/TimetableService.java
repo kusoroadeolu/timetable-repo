@@ -1,111 +1,259 @@
 package com.uni.TimeTable.service;
 
+import com.uni.TimeTable.exception.ConflictException;
 import com.uni.TimeTable.models.*;
 import com.uni.TimeTable.repository.*;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.uni.TimeTable.exception.ConflictException;
 
-import java.util.Comparator;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class TimetableService {
 
     private final CourseRepository courseRepository;
     private final DepartmentRepository departmentRepository;
-    private final CoordinatorRepository coordinatorRepository;
-    private final CoordinatorAssignmentRepository assignmentRepository;
+    private final SchoolRepository schoolRepository;
     private final LecturerRepository lecturerRepository;
+    private final CourseDefinitionRepository courseDefinitionRepository;
+    private final RoomRepository roomRepository;
 
-    public TimetableService(CourseRepository courseRepository,
-                            DepartmentRepository departmentRepository,
-                            CoordinatorRepository coordinatorRepository,
-                            CoordinatorAssignmentRepository assignmentRepository,
-                            LecturerRepository lecturerRepository) {
-        this.courseRepository = courseRepository;
-        this.departmentRepository = departmentRepository;
-        this.coordinatorRepository = coordinatorRepository;
-        this.assignmentRepository = assignmentRepository;
-        this.lecturerRepository = lecturerRepository;
+    @Transactional
+    public void scheduleTimetable(
+            Long courseDefinitionId,
+            Long departmentId,
+            Integer year,
+            String startTime,
+            String endTime,
+            String dayOfWeek,
+            Long lecturerId,
+            String elearningLink,
+            Long roomId,
+            Authentication auth) throws ConflictException {
+        CourseDefinition courseDefinition = courseDefinitionRepository.findById(courseDefinitionId)
+                .orElseThrow(() -> new IllegalArgumentException("CourseDefinition not found"));
+
+        // Removed validation check for departmentId and year since the UI ensures they match
+
+        Lecturer lecturer = lecturerRepository.findById(lecturerId)
+                .orElseThrow(() -> new IllegalArgumentException("Lecturer not found"));
+
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new IllegalArgumentException("Room not found"));
+
+        Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+        LocalTime parsedStartTime = LocalTime.parse(startTime);
+        LocalTime parsedEndTime = LocalTime.parse(endTime);
+
+        if (parsedEndTime.isBefore(parsedStartTime) || parsedEndTime.equals(parsedStartTime)) {
+            throw new IllegalArgumentException("End time must be after start time.");
+        }
+
+        // Check lecturer availability
+        if (!lecturer.isAvailable(parsedDayOfWeek, parsedStartTime, parsedEndTime)) {
+            throw new ConflictException("Lecturer " + lecturer.getEmail() + " is not available on " + dayOfWeek + " from " + startTime + " to " + endTime);
+        }
+
+        // Check for lecturer conflicts
+        List<Course> conflictingLecturerCourses = courseRepository.findByLecturerAndDayOfWeekAndTimeOverlap(
+                lecturer.getId(), parsedDayOfWeek, parsedStartTime, parsedEndTime);
+        if (!conflictingLecturerCourses.isEmpty()) {
+            Course conflict = conflictingLecturerCourses.get(0);
+            throw new ConflictException("Lecturer " + lecturer.getEmail() + " is already scheduled for " +
+                    conflict.getCourseDefinition().getCode() + " on " + dayOfWeek + " from " +
+                    conflict.getStartTime() + " to " + conflict.getEndTime());
+        }
+
+        // Check for room conflicts
+        List<Course> conflictingRoomCourses = courseRepository.findByDayOfWeekAndRoomAndTimeOverlap(
+                room, parsedDayOfWeek, parsedStartTime, parsedEndTime);
+        if (!conflictingRoomCourses.isEmpty()) {
+            Course conflict = conflictingRoomCourses.get(0);
+            throw new ConflictException("Room " + room.getName() + " is already booked for " +
+                    conflict.getCourseDefinition().getCode() + " on " + dayOfWeek + " from " +
+                    conflict.getStartTime() + " to " + conflict.getEndTime());
+        }
+
+        // Check room capacity
+        Course existingCourse = courseRepository.findByCourseDefinition(courseDefinition)
+                .orElseGet(() -> {
+                    Course newCourse = new Course();
+                    newCourse.setCourseDefinition(courseDefinition);
+                    newCourse.setStatus(Course.CourseInstanceStatus.DRAFT);
+                    newCourse.setFirstTimeStudents(0);
+                    newCourse.setCarryoverStudents(0);
+                    newCourse.setTotalStudents(0);
+                    return newCourse;
+                });
+
+        int studentCount = existingCourse.getTotalStudents();
+        if (studentCount > room.getCapacity()) {
+            throw new IllegalArgumentException("Room capacity (" + room.getCapacity() + ") is less than student count (" + studentCount + ")");
+        }
+
+        // Update the course
+        existingCourse.setDayOfWeek(parsedDayOfWeek);
+        existingCourse.setStartTime(parsedStartTime);
+        existingCourse.setEndTime(parsedEndTime);
+        existingCourse.setRoom(room);
+        existingCourse.setStatus(Course.CourseInstanceStatus.DRAFT);
+
+        // Update the lecturer in the CourseDefinition if necessary
+        if (!courseDefinition.getLecturer().getId().equals(lecturerId)) {
+            courseDefinition.setLecturer(lecturer);
+            courseDefinitionRepository.save(courseDefinition);
+        }
+
+        // Update the elearningLink in the CourseDefinition if provided
+        if (elearningLink != null && !elearningLink.isEmpty()) {
+            courseDefinition.setElearningLink(elearningLink);
+            courseDefinitionRepository.save(courseDefinition);
+        }
+
+        courseRepository.save(existingCourse);
     }
 
     @Transactional
-    public Course scheduleCourse(String code, String name, Long departmentId, int year,
-                                 String startTime, String endTime, String dayOfWeek,
-                                 String location, Long lecturerId, Integer credits, String elearningLink,
-                                 Authentication auth)
-            throws IllegalArgumentException, ConflictException {
-        Coordinator coordinator = coordinatorRepository.findByUsername(auth.getName());
-        if (coordinator == null) throw new IllegalArgumentException("Invalid coordinator");
+    public void reassignRoom(Long courseId, Long roomId, String dayOfWeek, String startTime, String endTime, Authentication auth) throws ConflictException {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found"));
 
-        Department department = departmentRepository.findById(departmentId)
-                .orElseThrow(() -> new IllegalArgumentException("Department not found: " + departmentId));
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new IllegalArgumentException("Room not found"));
 
-        Lecturer lecturer = lecturerRepository.findById(lecturerId)
-                .orElseThrow(() -> new IllegalArgumentException("Lecturer not found: " + lecturerId));
+        Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+        LocalTime parsedStartTime = LocalTime.parse(startTime);
+        LocalTime parsedEndTime = LocalTime.parse(endTime);
 
-        List<CoordinatorAssignment> assignments = assignmentRepository.findByCoordinator(coordinator);
-        boolean isAssigned = assignments.stream().anyMatch(a ->
-                a.getDepartment().getId().equals(departmentId) && a.getYear() == year);
-        if (!isAssigned) throw new IllegalArgumentException("You are not assigned to this department and year");
-
-        List<Course> conflicts = courseRepository.findConflictingCourses(startTime, endTime, dayOfWeek, location);
-        if (!conflicts.isEmpty()) {
-            Course conflict = conflicts.getFirst();
-            throw new ConflictException("Time slot conflicts with " + conflict.getCode());
+        if (parsedEndTime.isBefore(parsedStartTime) || parsedEndTime.equals(parsedStartTime)) {
+            throw new IllegalArgumentException("End time must be after start time.");
         }
 
-        if (credits == null) throw new IllegalArgumentException("Credits must be specified");
-        Course course = new Course(code, name, department, year, startTime, endTime, dayOfWeek, location,
-                coordinator, lecturer, credits, elearningLink);
-        return courseRepository.save(course);
+        Lecturer lecturer = course.getCourseDefinition().getLecturer();
+        if (lecturer != null) {
+            if (!lecturer.isAvailable(parsedDayOfWeek, parsedStartTime, parsedEndTime)) {
+                throw new ConflictException("Lecturer " + lecturer.getEmail() + " is not available on " + dayOfWeek + " from " + startTime + " to " + endTime);
+            }
+            List<Course> conflictingLecturerCourses = courseRepository.findByLecturerAndDayOfWeekAndTimeOverlap(
+                    lecturer.getId(), parsedDayOfWeek, parsedStartTime, parsedEndTime);
+            conflictingLecturerCourses.removeIf(c -> c.getId().equals(courseId));
+            if (!conflictingLecturerCourses.isEmpty()) {
+                Course conflict = conflictingLecturerCourses.get(0);
+                throw new ConflictException("Lecturer " + lecturer.getEmail() + " is already scheduled for " +
+                        conflict.getCourseDefinition().getCode() + " on " + dayOfWeek + " from " +
+                        conflict.getStartTime() + " to " + conflict.getEndTime());
+            }
+        }
+
+        List<Course> conflictingRoomCourses = courseRepository.findByDayOfWeekAndRoomAndTimeOverlap(
+                room, parsedDayOfWeek, parsedStartTime, parsedEndTime);
+        conflictingRoomCourses.removeIf(c -> c.getId().equals(courseId));
+        if (!conflictingRoomCourses.isEmpty()) {
+            Course conflict = conflictingRoomCourses.get(0);
+            throw new ConflictException("Room " + room.getName() + " is already booked for " +
+                    conflict.getCourseDefinition().getCode() + " on " + dayOfWeek + " from " +
+                    conflict.getStartTime() + " to " + conflict.getEndTime());
+        }
+
+        int studentCount = course.getTotalStudents();
+        if (studentCount > room.getCapacity()) {
+            throw new IllegalArgumentException("Room capacity (" + room.getCapacity() + ") is less than student count (" + studentCount + ")");
+        }
+
+        course.setRoom(room);
+        course.setDayOfWeek(parsedDayOfWeek);
+        course.setStartTime(parsedStartTime);
+        course.setEndTime(parsedEndTime);
+        courseRepository.save(course);
     }
 
-    //Display timetable by department and year
-    public List<Course> getTimetable(Long departmentId, int year) {
-        return courseRepository.findByDepartmentIdAndYear(departmentId, year);
-    }
-
-    //Display timetable by department and year and day of the week
-    public List<Course> getTimetable(Long departmentId, Integer year, String dayOfWeek) {
-        List<Course> courses;
-        if (dayOfWeek != null && !dayOfWeek.trim().isEmpty()) {
-            courses = courseRepository.findByDepartmentIdAndYearAndDayOfWeek(departmentId, year, dayOfWeek);
-            System.out.println("Filtering by dayOfWeek: " + dayOfWeek);
-            System.out.println("Courses found: " + courses.size());
+    @Transactional
+    public void finalizeTimetable(Authentication auth, Long departmentId, Integer year) {
+        List<Course> draftCourses;
+        if (departmentId != null && year != null) {
+            draftCourses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
+                    departmentId, year, Course.CourseInstanceStatus.DRAFT
+            );
+        } else if (departmentId != null) {
+            draftCourses = courseRepository.findByCourseDefinitionDepartmentIdAndStatus(
+                    departmentId, Course.CourseInstanceStatus.DRAFT
+            );
+        } else if (year != null) {
+            draftCourses = courseRepository.findByCourseDefinitionYearAndStatus(
+                    year, Course.CourseInstanceStatus.DRAFT
+            );
         } else {
-            courses = courseRepository.findByDepartmentIdAndYear(departmentId, year);
-            System.out.println("No dayOfWeek filter applied, fetching all courses for dept: " + departmentId + ", year: " + year);
+            draftCourses = courseRepository.findByStatus(Course.CourseInstanceStatus.DRAFT);
         }
-        courses.sort(Comparator.comparing(Course::getStartTime));
+
+        if (draftCourses.isEmpty()) {
+            throw new IllegalStateException("No draft courses found to finalize for the selected criteria.");
+        }
+
+        for (Course course : draftCourses) {
+            course.setStatus(Course.CourseInstanceStatus.FINALIZED);
+            courseRepository.save(course);
+        }
+    }
+
+    public List<School> getAllSchools() {
+        return schoolRepository.findAll();
+    }
+
+    public List<Department> getDepartmentsBySchool(Long schoolId) {
+        if (schoolId == null) {
+            return departmentRepository.findAll();
+        }
+        return departmentRepository.findBySchoolId(schoolId);
+    }
+
+    public List<Course> getTimetable(Long schoolId, Long departmentId, Integer year, String dayOfWeek, Authentication auth) {
+        List<Course> courses;
+        if (departmentId != null && year != null) {
+            courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
+                    departmentId, year, Course.CourseInstanceStatus.FINALIZED);
+        } else if (departmentId != null) {
+            courses = courseRepository.findByCourseDefinitionDepartmentIdAndStatus(
+                    departmentId, Course.CourseInstanceStatus.FINALIZED);
+        } else if (year != null) {
+            courses = courseRepository.findByCourseDefinitionYearAndStatus(
+                    year, Course.CourseInstanceStatus.FINALIZED);
+        } else {
+            courses = courseRepository.findByStatus(Course.CourseInstanceStatus.FINALIZED);
+        }
+
+        if (schoolId != null) {
+            courses = courses.stream()
+                    .filter(course -> course.getCourseDefinition().getDepartment().getSchool().getId().equals(schoolId))
+                    .collect(Collectors.toList());
+        }
+
+        if (dayOfWeek != null && !dayOfWeek.isEmpty()) {
+            Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+            courses = courses.stream()
+                    .filter(course -> course.getDayOfWeek() == parsedDayOfWeek)
+                    .collect(Collectors.toList());
+        }
+
         return courses;
     }
 
-
-    public List<Department> getAllDepartments() {
-        return departmentRepository.findAll();
-    }
-
-    @Transactional
-    public void removeCourse(Long courseId, Authentication auth) throws IllegalArgumentException {
-        Coordinator coordinator = coordinatorRepository.findByUsername(auth.getName());
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
-
-        List<CoordinatorAssignment> assignments = assignmentRepository.findByCoordinator(coordinator);
-        boolean canRemove = assignments.stream().anyMatch(a ->
-                a.getDepartment().getId().equals(course.getDepartment().getId()) && a.getYear() == course.getYear());
-        if (!canRemove) {
-            throw new IllegalArgumentException("You are not authorized to remove this course");
-        }
-
-        courseRepository.delete(course);
-    }
-
     public List<CoordinatorAssignment> getCoordinatorAssignments(Authentication auth) {
-        Coordinator coordinator = coordinatorRepository.findByUsername(auth.getName());
-        return assignmentRepository.findByCoordinator(coordinator);
+        // Placeholder for fetching coordinator assignments
+        return new ArrayList<>();
+    }
+
+    public List<Course> getStudentCourses(Long departmentId, Integer year) {
+        if (departmentId == null || year == null) {
+            return new ArrayList<>();
+        }
+        return courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
+                departmentId, year, Course.CourseInstanceStatus.FINALIZED);
     }
 }

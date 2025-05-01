@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Overseer Timetable</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .table th {
+            background-color: #007bff;
+            color: white;
+        }
+        .filter-form {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-4">
+    <h2>Overseer Timetable</h2>
+
+    <!-- Filter Form -->
+    <form class="filter-form" method="get" action="/overseer/timetable">
+        <div class="row">
+            <div class="col-md-4">
+                <label for="schoolId" class="form-label">School</label>
+                <select id="schoolId" name="schoolId" class="form-select" onchange="updateDepartments()">
+                    <option value="">All Schools</option>
+                    <option th:each="school : ${schools}"
+                            th:value="${school.id}"
+                            th:text="${school.name}"
+                            th:selected="${school.id == selectedSchoolId}">
+                    </option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="departmentId" class="form-label">Department</label>
+                <select id="departmentId" name="departmentId" class="form-select">
+                    <option value="">All Departments</option>
+                    <option th:each="dept : ${departments}"
+                            th:value="${dept.id}"
+                            th:text="${dept.name}"
+                            th:selected="${dept.id == selectedDepartmentId}">
+                    </option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="year" class="form-label">Year</label>
+                <select id="year" name="year" class="form-select">
+                    <option value="">All Years</option>
+                    <option th:each="yr : ${years}"
+                            th:value="${yr}"
+                            th:text="${yr}"
+                            th:selected="${yr == selectedYear}">
+                    </option>
+                </select>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+    </form>
+
+    <!-- Display Courses -->
+    <div th:each="dept : ${departments}">
+        <h3 th:text="${dept.name}"></h3>
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Course Code</th>
+                <th>Name</th>
+                <th>Day</th>
+                <th>Time</th>
+                <th>Lecturer</th>
+                <th>Room</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="course : ${coursesByDept[dept.id]}">
+                <td th:text="${course.courseDefinition.code}"></td>
+                <td th:text="${course.courseDefinition.name}"></td>
+                <td th:text="${course.dayOfWeek}"></td>
+                <td th:text="${course.startTime} + ' - ' + ${course.endTime}"></td>
+                <td th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></td>
+                <td th:text="${course.room != null ? course.room.name : 'N/A'}"></td>
+            </tr>
+            <tr th:if="${#lists.isEmpty(coursesByDept[dept.id])}">
+                <td colspan="6">No courses scheduled for this department.</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Navigation Buttons -->
+    <a href="/overseer/schedule-timetable" class="btn btn-primary me-2">Schedule Timetable</a>
+    <a href="/overseer/reassign-room" class="btn btn-primary me-2">Reassign Room</a>
+    <a href="/overseer/finalize-timetable"
+       class="btn btn-success me-2"
+       data-bs-toggle="tooltip"
+       data-bs-placement="top"
+       title="Finalize draft courses to make them visible to students and coordinators.">
+        Finalize Timetable
+    </a>
+</div>
+
+<script>
+    function updateDepartments() {
+        const schoolId = document.getElementById('schoolId').value;
+        const departmentSelect = document.getElementById('departmentId');
+
+        departmentSelect.innerHTML = '<option value="">All Departments</option>';
+
+        if (schoolId) {
+            $.ajax({
+                url: '/overseer/departments-by-school',
+                data: { schoolId: schoolId },
+                success: function(departments) {
+                    departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept.id;
+                        option.textContent = dept.name;
+                        departmentSelect.appendChild(option);
+                    });
+                },
+                error: function() {
+                    alert('Error fetching departments.');
+                }
+            });
+        } else {
+            $.ajax({
+                url: '/overseer/departments-by-school',
+                success: function(departments) {
+                    departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept.id;
+                        option.textContent = dept.name;
+                        departmentSelect.appendChild(option);
+                    });
+                },
+                error: function() {
+                    alert('Error fetching departments.');
+                }
+            });
+        }
+    }
+
+    $(document).ready(function() {
+        updateDepartments();
+
+        // Initialize Bootstrap tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
+</body>
+</html>

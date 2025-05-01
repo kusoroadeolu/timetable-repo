@@ -1,77 +1,136 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <title>Student Timetable</title>
+    <title>View Timetable</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .table th {
+            background-color: #007bff;
+            color: white;
+        }
+        .back-to-top { position: fixed; bottom: 20px; right: 20px; display: none; }
+    </style>
 </head>
 <body>
 <div class="container mt-4">
-    <h2>Student Timetable</h2>
+    <h2>View Timetable</h2>
+    <div class="mb-3">
+        <a th:href="@{/student/courses(departmentId=${selectedDepartmentId}, year=${selectedYear})}" class="btn btn-outline-primary">View Courses</a>
+    </div>
+    <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
 
-    <form th:action="@{/student/timetable}" method="get" class="mb-3">
-        <input type="hidden" name="departmentId" th:value="${selectedDepartmentId}">
-        <input type="hidden" name="year" th:value="${selectedYear}">
-        <div class="row">
-            <div class="col">
-                <label for="dayOfWeek">Day of Week</label>
-                <select name="dayOfWeek" id="dayOfWeek" class="form-select">
-                    <option value="">All Days</option>
-                    <option th:each="day : ${daysOfWeek}" th:value="${day}" th:text="${day}" th:selected="${day == selectedDayOfWeek}"></option>
-                </select>
+    <div th:if="${selectedDepartmentId == null or selectedYear == null}">
+        <form th:action="@{/student/timetable}" method="get" class="mb-3">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="departmentId" class="form-label">Department</label>
+                    <select name="departmentId" id="departmentId" class="form-select" required>
+                        <option value="">Select Department</option>
+                        <option th:each="dept : ${departments}" th:value="${dept.id}" th:text="${dept.name}"></option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="year" class="form-label">Year</label>
+                    <select name="year" id="year" class="form-select" required>
+                        <option value="">Select Year</option>
+                        <option th:each="yr : ${years}" th:value="${yr}" th:text="${yr}"></option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary mt-4">Select</button>
+                </div>
             </div>
-            <div class="col">
-                <button type="submit" class="btn btn-primary mt-4">Load Timetable</button>
+        </form>
+    </div>
+
+    <div th:if="${selectedDepartmentId != null and selectedYear != null}">
+        <form th:action="@{/student/timetable}" method="get" class="mb-3">
+            <input type="hidden" name="departmentId" th:value="${selectedDepartmentId}">
+            <input type="hidden" name="year" th:value="${selectedYear}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="dayOfWeek" class="form-label">Day of Week</label>
+                    <select name="dayOfWeek" id="dayOfWeek" class="form-select">
+                        <option value="">All Days</option>
+                        <option th:each="day : ${daysOfWeek}" th:value="${day}" th:text="${day}" th:selected="${day == selectedDayOfWeek}"></option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="sortBy" class="form-label">Sort By</label>
+                    <select id="sortBy" class="form-select">
+                        <option value="startTime">Start Time</option>
+                        <option value="courseCode">Course Code</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary mt-4">Load Timetable</button>
+                </div>
             </div>
+        </form>
+
+        <div th:if="${courses != null}">
+            <table id="coursesTable" class="table table-striped" th:unless="${#lists.isEmpty(courses)}">
+                <thead>
+                <tr>
+                    <th>Course Code</th>
+                    <th>Day</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Room</th>
+                    <th>Lecturer</th>
+                    <th>Total Students</th>
+                    <th>Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="course : ${courses}">
+                    <td th:text="${course.courseDefinition.code}"></td>
+                    <td th:text="${course.dayOfWeek}"></td>
+                    <td th:text="${#temporals.format(course.startTime, 'HH:mm')}"></td>
+                    <td th:text="${#temporals.format(course.endTime, 'HH:mm')}"></td>
+                    <td th:text="${course.room != null ? course.room.name : 'N/A'}"></td>
+                    <td th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></td>
+                    <td th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></td>
+                    <td>
+                        <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                                th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <p th:if="${#lists.isEmpty(courses)}" class="text-muted">No courses found for this selection.</p>
         </div>
-    </form>
-
-    <div th:if="${courses != null}">
-        <table class="table table-striped" th:unless="${#lists.isEmpty(courses)}">
-            <thead>
-            <tr>
-                <th>Course Code</th>
-                <th>Day</th>
-                <th>Start Time</th>
-                <th>End Time</th>
-                <th>Location</th>
-                <th>Lecturer</th>
-                <th>Action</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr th:each="course : ${courses}">
-                <td th:text="${course.code}"></td>
-                <td th:text="${course.dayOfWeek}"></td>
-                <td th:text="${course.startTime}"></td>
-                <td th:text="${course.endTime}"></td>
-                <td th:text="${course.location}"></td>
-                <td th:text="${course.lecturer.name}"></td>
-                <td>
-                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                            th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-        <p th:if="${#lists.isEmpty(courses)}" class="text-muted">No courses found for this selection.</p>
     </div>
 
     <div th:each="course : ${courses}" th:id="'courseModal' + ${course.id}" class="modal fade" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" th:text="${course.code} + ' Details'"></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" th:text="${course.courseDefinition.code} + ' - ' + ${course.courseDefinition.name}"></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p><strong>Course Name:</strong> <span th:text="${course.name}"></span></p>
-                    <p><strong>Credits:</strong> <span th:text="${course.credits}"></span></p>
-                    <p><strong>eLearning Link:</strong>
-                        <a th:if="${course.elearningLink}" th:href="${course.elearningLink}" target="_blank">Access Course</a>
-                        <span th:unless="${course.elearningLink}">Not available</span>
-                    </p>
-                    <p><strong>Lecturer Email:</strong> <span th:text="${course.lecturer.email}"></span></p>
-                    <p><strong>Coordinator:</strong> <span th:text="${course.coordinator.username}"></span></p>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Credits:</strong> <span th:text="${course.courseDefinition != null ? course.courseDefinition.credits : 'N/A'}"></span></p>
+                            <p><strong>Day:</strong> <span th:text="${course.dayOfWeek}"></span></p>
+                            <p><strong>Time:</strong> <span th:text="${#temporals.format(course.startTime, 'HH:mm')} + ' - ' + ${#temporals.format(course.endTime, 'HH:mm')}"></span></p>
+                            <p><strong>Room:</strong> <span th:text="${course.room != null ? course.room.name : 'N/A'}"></span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Lecturer:</strong> <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span></p>
+                            <p><strong>Status:</strong> <span th:text="${course.status}"></span></p>
+                            <p><strong>Total Students:</strong> <span th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></span></p>
+                            <p><strong>eLearning Link:</strong>
+                                <a th:if="${course.courseDefinition.elearningLink != null}" th:href="${course.courseDefinition.elearningLink}" target="_blank" class="btn btn-success btn-sm">Access Course</a>
+                                <span th:unless="${course.courseDefinition.elearningLink != null}" class="text-muted">Not available</span>
+                            </p>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -79,8 +138,44 @@
             </div>
         </div>
     </div>
+
+    <button id="backToTop" class="btn btn-primary back-to-top" onclick="scrollToTop()">Back to Top</button>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    window.onscroll = function() {
+        var btn = document.getElementById('backToTop');
+        if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+            btn.style.display = 'block';
+        } else {
+            btn.style.display = 'none';
+        }
+    };
+    document.getElementById('sortBy').addEventListener('change', function() {
+        var sortBy = this.value;
+        var table = document.getElementById('coursesTable');
+        var tbody = table.querySelector('tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort(function(a, b) {
+            var aValue, bValue;
+            if (sortBy === 'startTime') {
+                aValue = a.cells[2].textContent;
+                bValue = b.cells[2].textContent;
+            } else if (sortBy === 'courseCode') {
+                aValue = a.cells[0].textContent;
+                bValue = b.cells[0].textContent;
+            }
+            return aValue.localeCompare(bValue);
+        });
+        rows.forEach(function(row) {
+            tbody.appendChild(row);
+        });
+    });
+</script>
 </body>
 </html>

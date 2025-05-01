@@ -1,61 +1,76 @@
 package com.uni.TimeTable.config;
 
-import com.uni.TimeTable.models.Coordinator;
-import com.uni.TimeTable.repository.CoordinatorRepository;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.password.NoOpPasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+
+import java.io.IOException;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private final CoordinatorRepository coordinatorRepository;
+    private final UserDetailsService userDetailsService;
 
-    public SecurityConfig(CoordinatorRepository coordinatorRepository) {
-        this.coordinatorRepository = coordinatorRepository;
+    public SecurityConfig(UserDetailsService userDetailsService) {
+        this.userDetailsService = userDetailsService;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/coordinator/**").authenticated()
-                        .requestMatchers("/student/**", "/login").permitAll()
+                        // Public endpoints
+                        .requestMatchers("/", "/timetable", "/student/**").permitAll()
+                        .requestMatchers("/login", "/logout").permitAll()
+                        // Restricted endpoints
+                        .requestMatchers("/overseer/**").hasRole("OVERSEER")
+                        .requestMatchers("/coordinator/**").hasRole("COORDINATOR")
+                        // Any other request requires authentication
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
                         .loginPage("/login")
-                        .defaultSuccessUrl("/coordinator/timetable")
+                        .successHandler(customAuthenticationSuccessHandler())
                         .permitAll()
                 )
                 .logout(logout -> logout
+                        .logoutSuccessUrl("/login?logout")
                         .permitAll()
-                );
+                )
+                .csrf(csrf -> csrf.disable()); // Disable CSRF for simplicity during testing
         return http.build();
     }
 
     @Bean
-    public UserDetailsService userDetailsService() {
-        return username -> {
-            Coordinator coordinator = coordinatorRepository.findByUsername(username);
-            if (coordinator == null) throw new UsernameNotFoundException("Coordinator not found: " + username);
-            return org.springframework.security.core.userdetails.User
-                    .withUsername(coordinator.getUsername())
-                    .password(coordinator.getPassword())
-                    .roles("COORDINATOR")
-                    .build();
+    public AuthenticationSuccessHandler customAuthenticationSuccessHandler() {
+        return new AuthenticationSuccessHandler() {
+            @Override
+            public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
+                                                Authentication authentication) throws IOException {
+                String role = authentication.getAuthorities().iterator().next().getAuthority();
+                if (role.equals("ROLE_OVERSEER")) {
+                    response.sendRedirect("/overseer/timetable");
+                } else if (role.equals("ROLE_COORDINATOR")) {
+                    response.sendRedirect("/coordinator/view-timetable");
+                } else {
+                    response.sendRedirect("/");
+                }
+            }
         };
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return NoOpPasswordEncoder.getInstance(); // Plain text for demo
+        return new BCryptPasswordEncoder();
     }
 }

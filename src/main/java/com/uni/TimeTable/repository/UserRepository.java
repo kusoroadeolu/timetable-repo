@@ -1,10 +1,9 @@
 package com.uni.TimeTable.repository;
 
-import com.uni.TimeTable.models.Student;
+import com.uni.TimeTable.models.User;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import java.util.Optional;
 
-@Repository
-public interface UserRepository extends JpaRepository<Student, Long> {
-    Student findByUsername(String username);
+public interface UserRepository extends JpaRepository<User, String> {
+    Optional<User> findByUsername(String username);
 }

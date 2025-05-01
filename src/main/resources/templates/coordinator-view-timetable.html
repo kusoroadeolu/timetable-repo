@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Coordinator Timetable</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .dashboard-header {
+            background: linear-gradient(90deg, #007bff, #00b7ff);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        .logout-btn {
+            background-color: #ffffff;
+            color: #007bff;
+            padding: 8px 20px;
+            border-radius: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .logout-btn:hover {
+            background-color: #e9ecef;
+            color: #0056b3;
+        }
+        .form-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+        .table-responsive {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+        .table th {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            border: none;
+            border-radius: 15px;
+        }
+        .btn-info:hover {
+            background-color: #138496;
+        }
+        .modal-header {
+            background-color: #007bff;
+            color: white;
+        }
+        .error-modal-header {
+            background-color: #dc3545;
+            color: white;
+        }
+        .success-modal-header {
+            background-color: #28a745;
+            color: white;
+        }
+        .select2-container .select2-selection--single {
+            height: 38px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-4">
+    <div class="dashboard-header d-flex justify-content-between align-items-center">
+        <h2>Coordinator Dashboard</h2>
+        <a href="/logout" class="logout-btn">Logout</a>
+    </div>
+
+    <div class="form-section">
+        <form th:action="@{/coordinator/view-timetable}" method="get" class="mb-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label for="deptYearSelect" class="form-label">Department & Year</label>
+                    <select name="deptYearSelect" id="deptYearSelect" class="form-select" onchange="updateHiddenFields()">
+                        <option value="">Select Department & Year</option>
+                        <option th:each="assignment : ${assignments}"
+                                th:value="${assignment.department.id + ',' + assignment.year}"
+                                th:text="${assignment.department.name + ' Year ' + assignment.year}"
+                                th:selected="${selectedDeptYear == assignment.department.name + ' Year ' + assignment.year}"></option>
+                    </select>
+                    <input type="hidden" name="departmentId" id="departmentId">
+                    <input type="hidden" name="year" id="year">
+                </div>
+                <div class="col-md-5">
+                    <label for="dayOfWeek" class="form-label">Day of Week</label>
+                    <select name="dayOfWeek" id="dayOfWeek" class="form-select">
+                        <option value="">All Days</option>
+                        <option th:each="day : ${daysOfWeek}" th:value="${day}" th:text="${day}"
+                                th:selected="${selectedDayOfWeek == day}"></option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Load</button>
+                    <a href="/coordinator/view-timetable" class="btn btn-secondary w-100 mt-2">Clear</a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="table-responsive" th:if="${courses != null}">
+        <table class="table table-striped table-hover" th:unless="${#lists.isEmpty(courses)}">
+            <thead>
+            <tr>
+                <th>Course Code</th>
+                <th>Day</th>
+                <th>Time</th>
+                <th>Room</th>
+                <th>Lecturer</th>
+                <th>Students</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="course : ${courses}">
+                <td th:text="${course.courseDefinition.code}"></td>
+                <td th:text="${course.dayOfWeek}"></td>
+                <td th:text="${course.startTime} + ' - ' + ${course.endTime}"></td>
+                <td th:text="${course.room != null ? course.room.name : 'N/A'}"></td>
+                <td th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></td>
+                <td th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></td>
+                <td>
+                    <button class="btn btn-info btn-sm" data-bs-toggle="modal"
+                            th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        <p th:if="${#lists.isEmpty(courses)}" class="text-muted text-center">No courses scheduled yet.</p>
+    </div>
+
+    <!-- Course Details Modals -->
+    <div th:each="course : ${courses}" th:id="|courseModal${course.id}|" class="modal fade" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" th:text="${course.courseDefinition.code} + ' Details'"></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Course Name:</strong> <span th:text="${course.courseDefinition.name}"></span></p>
+                    <p><strong>Credits:</strong> <span th:text="${course.courseDefinition.credits}"></span></p>
+                    <p><strong>eLearning Link:</strong>
+                        <a th:if="${course.courseDefinition.elearningLink != null}" th:href="${course.courseDefinition.elearningLink}" target="_blank">Access Course</a>
+                        <span th:unless="${course.courseDefinition.elearningLink != null}">Not available</span>
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error and Success Modals -->
+    <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 250px;">
+            <div class="modal-content">
+                <div class="modal-header error-modal-header">
+                    <h5 class="modal-title" id="errorModalLabel">Oops!</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" th:text="${error}"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 250px;">
+            <div class="modal-content">
+                <div class="modal-header success-modal-header">
+                    <h5 class="modal-title" id="successModalLabel">Success!</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" th:text="${success}"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        $('#dayOfWeek').select2({
+            placeholder: "Select a day",
+            allowClear: true
+        });
+
+        const error = '[[${error}]]';
+        if (error && error !== 'null' && error !== '') {
+            const errorModal = new bootstrap.Modal(document.getElementById('errorModal'), {});
+            errorModal.show();
+        }
+
+        const success = '[[${success}]]';
+        if (success && success !== 'null' && success !== '') {
+            const successModal = new bootstrap.Modal(document.getElementById('successModal'), {});
+            successModal.show();
+        }
+
+        // Initialize deptYearSelect based on hidden fields
+        updateHiddenFields();
+    });
+
+    function updateHiddenFields() {
+        const deptYearSelect = document.getElementById('deptYearSelect').value;
+        const departmentIdInput = document.getElementById('departmentId');
+        const yearInput = document.getElementById('year');
+
+        if (deptYearSelect) {
+            const [departmentId, year] = deptYearSelect.split(',');
+            departmentIdInput.value = departmentId;
+            yearInput.value = year;
+        } else {
+            departmentIdInput.value = '';
+            yearInput.value = '';
+        }
+    }
+</script>
+</body>
+</html>

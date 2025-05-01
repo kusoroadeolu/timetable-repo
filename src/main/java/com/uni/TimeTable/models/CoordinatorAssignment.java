@@ -1,9 +1,15 @@
 package com.uni.TimeTable.models;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
-@Table(name = "coordinator_assignments")
+@Table(name = "coordinator_assignment")
+@Getter
+@Setter
+@NoArgsConstructor
 public class CoordinatorAssignment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,9 +26,6 @@ public class CoordinatorAssignment {
     @Column(nullable = false)
     private int year;
 
-    // Default constructor
-    public CoordinatorAssignment() {}
-
     // Constructor
     public CoordinatorAssignment(Coordinator coordinator, Department department, int year) {
         this.coordinator = coordinator;
@@ -30,13 +33,4 @@ public class CoordinatorAssignment {
         this.year = year;
     }
 
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public Coordinator getCoordinator() { return coordinator; }
-    public void setCoordinator(Coordinator coordinator) { this.coordinator = coordinator; }
-    public Department getDepartment() { return department; }
-    public void setDepartment(Department department) { this.department = department; }
-    public int getYear() { return year; }
-    public void setYear(int year) { this.year = year; }
 }
