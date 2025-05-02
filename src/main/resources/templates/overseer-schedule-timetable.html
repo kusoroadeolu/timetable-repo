@@ -82,7 +82,7 @@
             <div class="row mb-3">
                 <div class="col-md-6">
                     <label for="dayOfWeek" class="form-label">Day of Week</label>
-                    <select id="dayOfWeek" name="dayOfWeek" class="form-select" required>
+                    <select id="dayOfWeek" name="dayOfWeek" class="form-select" required onchange="updateRooms()">
                         <option value="">Select Day</option>
                         <option th:each="day : ${daysOfWeek}"
                                 th:value="${day}"
@@ -92,21 +92,21 @@
                 </div>
                 <div class="col-md-3">
                     <label for="startTime" class="form-label">Start Time</label>
-                    <input type="time" id="startTime" name="startTime" class="form-control" required>
+                    <input type="time" id="startTime" name="startTime" class="form-control" required onchange="updateRooms()">
                 </div>
                 <div class="col-md-3">
                     <label for="endTime" class="form-label">End Time</label>
-                    <input type="time" id="endTime" name="endTime" class="form-control" required>
+                    <input type="time" id="endTime" name="endTime" class="form-control" required onchange="updateRooms()">
                 </div>
             </div>
             <div class="row mb-3">
                 <div class="col-md-6">
-                    <label for="lecturerId" class="form-label">Lecturer</label>
-                    <select id="lecturerId" name="lecturerId" class="form-select" required>
-                        <option value="">Select Lecturer</option>
-                        <option th:each="lecturer : ${lecturers}"
-                                th:value="${lecturer.id}"
-                                th:text="${lecturer.name}">
+                    <label for="buildingId" class="form-label">Building</label>
+                    <select id="buildingId" name="buildingId" class="form-select" onchange="updateRooms()">
+                        <option value="">Select Building</option>
+                        <option th:each="building : ${buildings}"
+                                th:value="${building.id}"
+                                th:text="${building.name}">
                         </option>
                     </select>
                 </div>
@@ -114,10 +114,6 @@
                     <label for="roomId" class="form-label">Room</label>
                     <select id="roomId" name="roomId" class="form-select" required>
                         <option value="">Select Room</option>
-                        <option th:each="room : ${rooms}"
-                                th:value="${room.id}"
-                                th:text="${room.name} + ' (Capacity: ' + ${room.capacity} + ')'">
-                        </option>
                     </select>
                 </div>
             </div>
@@ -233,6 +229,65 @@
             });
         } catch (error) {
             console.error('Error in updateCourses:', error);
+        }
+    }
+
+    function updateRooms() {
+        try {
+            const buildingId = document.getElementById('buildingId').value;
+            const dayOfWeek = document.getElementById('dayOfWeek').value;
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+            const roomSelect = document.getElementById('roomId');
+
+            if (!buildingId || !dayOfWeek || !startTime || !endTime) {
+                console.log('Not all required fields are filled. Resetting room dropdown.');
+                roomSelect.innerHTML = '<option value="">Select Room</option>';
+                return;
+            }
+
+            // Client-side validation: Ensure endTime is after startTime
+            const start = new Date('1970-01-01T' + startTime + ':00');
+            const end = new Date('1970-01-01T' + endTime + ':00');
+            if (end <= start) {
+                console.log('End time must be after start time. Resetting room dropdown.');
+                roomSelect.innerHTML = '<option value="">Select Room</option>';
+                alert('End time must be after start time.');
+                return;
+            }
+
+            console.log('Updating rooms for buildingId:', buildingId, 'dayOfWeek:', dayOfWeek, 'startTime:', startTime, 'endTime:', endTime);
+
+            $.ajax({
+                url: '/overseer/available-rooms',
+                data: {
+                    buildingId: buildingId,
+                    dayOfWeek: dayOfWeek,
+                    startTime: startTime,
+                    endTime: endTime
+                },
+                success: function(rooms) {
+                    console.log('Fetched available rooms:', rooms);
+                    if (!Array.isArray(rooms)) {
+                        console.error('Rooms response is not an array:', rooms);
+                        return;
+                    }
+                    roomSelect.innerHTML = '<option value="">Select Room</option>';
+                    rooms.forEach(room => {
+                        const option = document.createElement('option');
+                        option.value = room.id;
+                        option.textContent = room.name + ' (Capacity: ' + room.capacity + ')';
+                        roomSelect.appendChild(option);
+                    });
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching available rooms:', status, error);
+                    console.error('Response:', xhr.responseText);
+                    alert('Error fetching available rooms: ' + error);
+                }
+            });
+        } catch (error) {
+            console.error('Error in updateRooms:', error);
         }
     }
 

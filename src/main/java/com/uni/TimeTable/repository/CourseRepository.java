@@ -127,4 +127,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     List<Course> findByCourseDefinitionYearAndStatus(
             Integer year, Course.CourseInstanceStatus status
     );
+
+    List<Course> findByCourseDefinitionDepartmentIdAndCourseDefinitionYear(Long departmentId, Integer year);
+    List<Course> findByCourseDefinitionDepartmentId(Long departmentId);
+    List<Course> findByCourseDefinitionYear(Integer year);
 }

@@ -35,13 +35,14 @@ public class Course {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
+//    @Column(name = "schedule_period")
+//    private String schedulePeriod;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CourseInstanceStatus status; // DRAFT/FINALIZED
 
-    private Integer firstTimeStudents;
-    private Integer carryoverStudents;
-    private Integer totalStudents;
+    // Removed firstTimeStudents, carryoverStudents, totalStudents
 
     public enum DayOfWeek {
         MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY

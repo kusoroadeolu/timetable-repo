@@ -4,11 +4,17 @@ import com.uni.TimeTable.models.*;
 import com.uni.TimeTable.exception.ConflictException;
 import com.uni.TimeTable.repository.*;
 import com.uni.TimeTable.service.TimetableService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.transaction.Transactional;
@@ -23,6 +29,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TimetableController {
 
+    private static final Logger logger = LoggerFactory.getLogger(TimetableController.class);
+
     private final TimetableService timetableService;
     private final LecturerRepository lecturerRepository;
     private final CourseDefinitionRepository courseDefinitionRepository;
@@ -34,7 +42,7 @@ public class TimetableController {
     private final BuildingRepository buildingRepository;
 
     private static final List<String> DAYS_OF_WEEK = Arrays.asList("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY");
-    private static final List<Integer> YEARS = Arrays.asList(1, 2, 3, 4);
+    private static final List<Integer> YEARS = Arrays.asList(1, 2, 3, 4, 5);
 
     @GetMapping({"/", "/timetable"})
     public String home(Model model) {
@@ -42,45 +50,63 @@ public class TimetableController {
     }
 
     @GetMapping("/overseer/timetable")
-    public String getOverseerTimetable(
+    public String viewTimetable(
             @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) Integer year,
-            Authentication auth, Model model) {
-        List<School> schools = timetableService.getAllSchools();
-        model.addAttribute("schools", schools);
+            Authentication auth,
+            Model model) {
 
+        // Fetch data
+        List<School> schools = timetableService.getAllSchools();
         List<Department> departments = timetableService.getDepartmentsBySchool(schoolId);
+        List<Integer> years = Arrays.asList(1, 2, 3, 4); // Adjust as per your logic
+        List<Course> courses = timetableService.getTimetable(schoolId, departmentId, year, null, auth);
+
+        // If a department filter is applied, only include that department
+        List<Department> filteredDepartments;
         if (departmentId != null) {
-            departments = departments.stream()
+            filteredDepartments = departments.stream()
                     .filter(dept -> dept.getId().equals(departmentId))
                     .collect(Collectors.toList());
+        } else {
+            filteredDepartments = departments; // Show all departments if no filter
         }
 
-        model.addAttribute("departments", departments);
-        model.addAttribute("years", YEARS);
+        // Group courses by department, only for the filtered departments
+        Map<Long, List<Course>> coursesByDept = filteredDepartments.stream()
+                .collect(Collectors.toMap(
+                        Department::getId,
+                        dept -> courses.stream()
+                                .filter(course -> course.getCourseDefinition().getDepartment().getId().equals(dept.getId()))
+                                .collect(Collectors.toList())
+                ));
 
+        // Add attributes to the model
+        model.addAttribute("schools", schools);
+        model.addAttribute("departments", departments); // Still pass all departments for the filter dropdown
+        model.addAttribute("filteredDepartments", filteredDepartments); // Pass filtered departments for display
+        model.addAttribute("years", years);
+        model.addAttribute("coursesByDept", coursesByDept);
         model.addAttribute("selectedSchoolId", schoolId);
         model.addAttribute("selectedDepartmentId", departmentId);
         model.addAttribute("selectedYear", year);
 
-        List<Course> courses = timetableService.getTimetable(schoolId, departmentId, year, null, auth);
-        Map<Long, List<Course>> coursesByDept = new HashMap<>();
-        for (Department dept : departments) {
-            List<Course> deptCourses = courses.stream()
-                    .filter(course -> course.getCourseDefinition().getDepartment().getId().equals(dept.getId()))
-                    .collect(Collectors.toList());
-            System.out.println("Courses for dept " + dept.getId() + ": " + deptCourses.size());
-            deptCourses.forEach(course -> System.out.println("Course: " + course.getCourseDefinition().getCode() +
-                    ", Day: " + course.getDayOfWeek() +
-                    ", Status: " + course.getStatus() +
-                    ", Lecturer: " + (course.getCourseDefinition().getLecturer() != null ? course.getCourseDefinition().getLecturer().getName() : "N/A")));
-            coursesByDept.put(dept.getId(), deptCourses);
-        }
-        model.addAttribute("coursesByDept", coursesByDept);
-
         return "overseer-timetable";
     }
+
+    @PostMapping("/overseer/remove-course")
+    @ResponseBody
+    public String removeCourse(@RequestParam Long courseId, Authentication auth) {
+        System.out.println("Received request to remove course with ID: " + courseId);
+        try {
+            timetableService.removeCourse(courseId, auth);
+            return "Course removed successfully";
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error removing course: " + e.getMessage(), e);
+        }
+    }
+
 
     @GetMapping("/overseer/departments-by-school")
     @ResponseBody
@@ -125,6 +151,53 @@ public class TimetableController {
                 .collect(Collectors.toList());
     }
 
+    @GetMapping("/overseer/available-rooms")
+    @ResponseBody
+    public List<Map<String, Object>> getAvailableRooms(
+            @RequestParam Long buildingId,
+            @RequestParam String dayOfWeek,
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
+        Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+        LocalTime parsedStartTime = LocalTime.parse(startTime);
+        LocalTime parsedEndTime = LocalTime.parse(endTime);
+
+        // Validate that endTime is after startTime
+        if (parsedEndTime.isBefore(parsedStartTime) || parsedEndTime.equals(parsedStartTime)) {
+            throw new IllegalArgumentException("End time must be after start time.");
+        }
+
+        List<Room> availableRooms = roomRepository.findAvailableRoomsByBuildingAndTime(
+                buildingId, parsedDayOfWeek, parsedStartTime, parsedEndTime);
+
+        return availableRooms.stream()
+                .map(room -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", room.getId());
+                    item.put("name", room.getName());
+                    item.put("capacity", room.getCapacity());
+                    return item;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/overseer/rooms-by-building")
+    @ResponseBody
+    public List<Map<String, Object>> getRoomsByBuilding(@RequestParam Long buildingId) {
+        System.out.println("Fetching rooms for buildingId: " + buildingId);
+        List<Room> rooms = roomRepository.findByBuildingId(buildingId);
+        System.out.println("Found " + rooms.size() + " rooms: " + rooms);
+        return rooms.stream()
+                .map(room -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", room.getId());
+                    item.put("name", room.getName());
+                    item.put("capacity", room.getCapacity());
+                    return item;
+                })
+                .collect(Collectors.toList());
+    }
+
     @GetMapping("/overseer/schedule-timetable")
     public String getScheduleTimetable(
             @RequestParam(required = false) Long schoolId,
@@ -133,7 +206,6 @@ public class TimetableController {
             Model model) {
         System.out.println("Loading schedule-timetable with schoolId: " + schoolId + ", departmentId: " + departmentId + ", year: " + year);
 
-        // Filter CourseDefinition options based on departmentId and year
         List<CourseDefinition> courseDefinitions;
         if (departmentId != null && year != null) {
             courseDefinitions = courseDefinitionRepository.findByDepartmentIdAndYear(departmentId, year);
@@ -146,16 +218,13 @@ public class TimetableController {
         }
         System.out.println("Initial CourseDefinitions: " + courseDefinitions);
 
-        // Filter departments based on schoolId
         List<Department> departments = timetableService.getDepartmentsBySchool(schoolId);
         System.out.println("Initial Departments: " + departments);
 
-        // Add attributes to the model
         model.addAttribute("courseDefinitions", courseDefinitions);
         model.addAttribute("schools", timetableService.getAllSchools());
         model.addAttribute("departments", departments);
-        model.addAttribute("lecturers", lecturerRepository.findAll());
-        model.addAttribute("rooms", roomRepository.findAll());
+        model.addAttribute("buildings", buildingRepository.findAll()); // Ensure this is present
         model.addAttribute("daysOfWeek", DAYS_OF_WEEK);
         model.addAttribute("years", YEARS);
         model.addAttribute("selectedSchoolId", schoolId);
@@ -174,7 +243,6 @@ public class TimetableController {
             @RequestParam String startTime,
             @RequestParam String endTime,
             @RequestParam String dayOfWeek,
-            @RequestParam Long lecturerId,
             @RequestParam(required = false) String elearningLink,
             @RequestParam Long roomId,
             Authentication auth,
@@ -189,7 +257,7 @@ public class TimetableController {
             }
 
             timetableService.scheduleTimetable(courseDefinitionId, departmentId, year, startTime, endTime,
-                    dayOfWeek, lecturerId, elearningLink, roomId, auth);
+                    dayOfWeek, null, elearningLink, roomId, auth); // Pass null for lecturerId
             redirectAttributes.addFlashAttribute("success", "Timetable scheduled successfully!");
         } catch (ConflictException | IllegalArgumentException e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());
@@ -284,11 +352,10 @@ public class TimetableController {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
             String line;
             boolean firstLine = true;
-            int batchSize = 1000;
-            List<Course> coursesBatch = new ArrayList<>();
             int rowCount = 0;
             int successfulRows = 0;
             List<String> errors = new ArrayList<>();
+            List<String> successes = new ArrayList<>();
 
             String[] expectedHeaders = {
                     "Programme(Department)", "Level(Year)", "Course Code", "Course Title", "Credit Units",
@@ -320,6 +387,8 @@ public class TimetableController {
                     String courseTitle = data[3].trim();
                     String creditUnits = data[4].trim();
                     String status = data[5].trim();
+                    String lecturerName = data[6].trim();
+                    String facultyStatus = data[7].trim();
                     String lecturerEmail = data[8].trim();
                     String firstTimeStudentsStr = data[9].trim();
                     String carryoverStudentsStr = data[10].trim();
@@ -331,11 +400,11 @@ public class TimetableController {
                     }
 
                     int credits = Integer.parseInt(creditUnits);
-                    if (credits <= 0) {
-                        throw new IllegalArgumentException("Credits must be a positive integer: " + credits);
+                    if (credits < 1 || credits > 10) {
+                        throw new IllegalArgumentException("Credits must be between 1 and 10: " + credits);
                     }
 
-                    if (!status.equals("Compulsory") && !status.equals("Elective")) {
+                    if (!status.equalsIgnoreCase("Compulsory") && !status.equalsIgnoreCase("Elective")) {
                         throw new IllegalArgumentException("Status must be 'Compulsory' or 'Elective': " + status);
                     }
 
@@ -349,73 +418,109 @@ public class TimetableController {
                         throw new IllegalArgumentException("Total students must equal first-time plus carryover students.");
                     }
 
-                    Department department = departmentRepository.findByName(departmentName)
-                            .filter(dept -> dept.getSchool().getId().equals(schoolId))
-                            .orElseGet(() -> {
-                                Department newDept = new Department();
-                                newDept.setName(departmentName);
-                                newDept.setSchool(school);
-                                return departmentRepository.save(newDept);
-                            });
+                    // Case-insensitive department lookup and creation
+                    Optional<Department> existingDept = departmentRepository.findByNameIgnoreCase(departmentName);
+                    Department department;
+                    if (existingDept.isPresent()) {
+                        department = existingDept.get();
+                        if (!department.getSchool().getId().equals(schoolId)) {
+                            throw new IllegalArgumentException("Department " + departmentName + " already exists in a different school.");
+                        }
+                    } else {
+                        Department newDept = new Department();
+                        newDept.setName(departmentName);
+                        newDept.setSchool(school);
+                        department = departmentRepository.save(newDept);
+                        logger.info("Created new department: {} for schoolId: {}", departmentName, schoolId);
+                    }
 
-                    Lecturer lecturer = lecturerRepository.findByEmail(lecturerEmail)
-                            .orElseThrow(() -> new IllegalArgumentException("Lecturer not found: " + lecturerEmail));
+                    if (lecturerName == null || lecturerName.isEmpty()) {
+                        throw new IllegalArgumentException("Lecturer name (Faculty) cannot be empty.");
+                    }
+                    if (lecturerEmail == null || lecturerEmail.isEmpty()) {
+                        throw new IllegalArgumentException("Lecturer email cannot be empty.");
+                    }
+                    if (!lecturerEmail.matches("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$")) {
+                        throw new IllegalArgumentException("Invalid email format: " + lecturerEmail);
+                    }
+                    if (facultyStatus == null || facultyStatus.isEmpty()) {
+                        throw new IllegalArgumentException("Faculty Status cannot be empty.");
+                    }
+
+                    Lecturer.LecturerType lecturerType = "Active".equalsIgnoreCase(facultyStatus) ?
+                            Lecturer.LecturerType.FULL_TIME : Lecturer.LecturerType.ADJUNCT;
+
+                    Lecturer lecturer = null;
+                    List<Lecturer> existingLecturers = lecturerRepository.findByName(lecturerName);
+                    if (!existingLecturers.isEmpty()) {
+                        lecturer = existingLecturers.stream()
+                                .filter(l -> l.getEmail().equals(lecturerEmail))
+                                .findFirst()
+                                .orElse(null);
+                        if (lecturer != null) {
+                            if (lecturer.getType() != lecturerType) {
+                                lecturer.setType(lecturerType);
+                                lecturer = lecturerRepository.save(lecturer);
+                                logger.info("Updated lecturer type: name={}, email={}, type={}",
+                                        lecturerName, lecturerEmail, lecturerType);
+                            } else {
+                                logger.info("Lecturer matched: name={}, email={}", lecturerName, lecturerEmail);
+                            }
+                        }
+                    }
+
+                    if (lecturer == null) {
+                        if (lecturerRepository.findByEmail(lecturerEmail).isPresent()) {
+                            throw new IllegalArgumentException("Email " + lecturerEmail + " is already used by another lecturer.");
+                        }
+                        lecturer = new Lecturer();
+                        lecturer.setName(lecturerName);
+                        lecturer.setEmail(lecturerEmail);
+                        lecturer.setType(lecturerType);
+                        lecturer = lecturerRepository.save(lecturer);
+                        logger.info("Created new lecturer: name={}, email={}, type={}",
+                                lecturerName, lecturerEmail, lecturerType);
+                    }
 
                     CourseDefinition courseDefinition = courseDefinitionRepository.findByCode(courseCode)
                             .orElseGet(() -> new CourseDefinition());
                     courseDefinition.setCode(courseCode);
                     courseDefinition.setName(courseTitle);
                     courseDefinition.setCredits(credits);
-                    courseDefinition.setStatus(CourseDefinition.CourseStatus.valueOf(status));
+                    courseDefinition.setStatus(CourseDefinition.CourseStatus.valueOf(status.toUpperCase()));
                     courseDefinition.setDepartment(department);
                     courseDefinition.setYear(year);
                     courseDefinition.setLecturer(lecturer);
+                    courseDefinition.setFirstTimeStudents(firstTimeStudents);
+                    courseDefinition.setCarryoverStudents(carryoverStudents);
+                    courseDefinition.setTotalStudents(totalStudents);
                     courseDefinition = courseDefinitionRepository.save(courseDefinition);
+                    logger.info("CourseDefinition saved: code={}, title={}", courseCode, courseTitle);
 
-                    Optional<Course> existingCourse = courseRepository.findByCourseDefinition(courseDefinition);
-                    Course course;
-                    if (existingCourse.isPresent()) {
-                        course = existingCourse.get();
-                        course.setFirstTimeStudents(firstTimeStudents);
-                        course.setCarryoverStudents(carryoverStudents);
-                        course.setTotalStudents(totalStudents);
-                        course.setStatus(Course.CourseInstanceStatus.DRAFT);
-                    } else {
-                        course = new Course();
-                        course.setCourseDefinition(courseDefinition);
-                        course.setStatus(Course.CourseInstanceStatus.DRAFT);
-                        course.setFirstTimeStudents(firstTimeStudents);
-                        course.setCarryoverStudents(carryoverStudents);
-                        course.setTotalStudents(totalStudents);
-                    }
-                    coursesBatch.add(course);
-
+                    successes.add("Row " + (rowCount + 2) + ": Course " + courseCode + " (" + departmentName + ", Year " + year + ")");
                     successfulRows++;
                     rowCount++;
-
-                    if (coursesBatch.size() >= batchSize) {
-                        courseRepository.saveAll(coursesBatch);
-                        coursesBatch.clear();
-                    }
                 } catch (Exception e) {
+                    logger.error("Error processing row {}: {}", rowCount + 2, e.getMessage());
                     errors.add("Row " + (rowCount + 2) + ": " + e.getMessage());
                     rowCount++;
                     continue;
                 }
             }
 
-            if (!coursesBatch.isEmpty()) {
-                courseRepository.saveAll(coursesBatch);
-            }
-
             String successMessage = "Academic planner uploaded successfully! " + successfulRows + " rows processed.";
+            if (!successes.isEmpty()) {
+                successMessage += " Processed rows: " + String.join("; ", successes);
+            }
             if (!errors.isEmpty()) {
                 successMessage += " However, some rows failed: " + String.join("; ", errors);
                 redirectAttributes.addFlashAttribute("error", successMessage);
             } else {
                 redirectAttributes.addFlashAttribute("success", successMessage);
             }
+            logger.info(successMessage);
         } catch (Exception e) {
+            logger.error("Error processing academic planner CSV: {}", e.getMessage(), e);
             redirectAttributes.addFlashAttribute("error", "Error processing academic planner CSV: " + e.getMessage());
         }
         return "redirect:/overseer/upload-planner";
@@ -438,61 +543,93 @@ public class TimetableController {
             int batchSize = 1000;
             List<Room> roomsBatch = new ArrayList<>();
             int rowCount = 0;
-            Set<String> roomNames = new HashSet<>();
+            int successfulRows = 0;
+            List<String> errors = new ArrayList<>();
+            List<String> successes = new ArrayList<>();
+            Set<String> roomNamesInCsv = new HashSet<>();
+
+            String[] expectedHeaders = {"buildingName", "roomName", "capacity"};
 
             while ((line = reader.readLine()) != null) {
+                String[] data = line.split(",");
                 if (firstLine) {
-                    String[] headers = line.split(",");
-                    if (!Arrays.equals(headers, new String[]{"buildingName", "roomName", "capacity"})) {
-                        redirectAttributes.addFlashAttribute("error", "Invalid CSV headers. Expected: buildingName,roomName,capacity");
+                    if (!Arrays.equals(data, expectedHeaders)) {
+                        redirectAttributes.addFlashAttribute("error", "Invalid CSV headers. Expected: " + String.join(",", expectedHeaders));
                         return "redirect:/overseer/upload-planner";
                     }
                     firstLine = false;
                     continue;
                 }
 
-                String[] data = line.split(",");
                 if (data.length < 3) {
-                    redirectAttributes.addFlashAttribute("error", "Invalid CSV format at row " + (rowCount + 2));
-                    return "redirect:/overseer/upload-planner";
+                    errors.add("Row " + (rowCount + 2) + ": Invalid CSV format, expected 3 columns");
+                    rowCount++;
+                    continue;
                 }
 
-                String buildingName = data[0].trim();
-                String roomName = data[1].trim();
-                int capacity;
                 try {
-                    capacity = Integer.parseInt(data[2].trim());
-                    if (capacity <= 0) {
-                        throw new IllegalArgumentException("Capacity must be a positive integer.");
+                    String buildingName = data[0].trim();
+                    String roomName = data[1].trim();
+                    int capacity;
+                    try {
+                        capacity = Integer.parseInt(data[2].trim());
+                        if (capacity <= 0) {
+                            throw new IllegalArgumentException("Capacity must be a positive integer.");
+                        }
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("Invalid capacity format: " + data[2].trim());
                     }
-                } catch (NumberFormatException e) {
-                    redirectAttributes.addFlashAttribute("error", "Invalid capacity format at row " + (rowCount + 2));
-                    return "redirect:/overseer/upload-planner";
-                }
 
-                if (!roomNames.add(roomName + ":" + buildingName)) {
-                    redirectAttributes.addFlashAttribute("error", "Duplicate room name found in CSV at row " + (rowCount + 2) + ": " + roomName);
-                    return "redirect:/overseer/upload-planner";
-                }
+                    // Check for duplicates within the CSV
+                    String roomKey = roomName + ":" + buildingName;
+                    if (!roomNamesInCsv.add(roomKey)) {
+                        throw new IllegalArgumentException("Duplicate room name found in CSV: " + roomName + " in " + buildingName);
+                    }
 
-                Building building = buildingRepository.findByName(buildingName)
-                        .orElseGet(() -> {
-                            Building newBuilding = new Building();
-                            newBuilding.setName(buildingName);
-                            return buildingRepository.save(newBuilding);
-                        });
+                    // Case-insensitive building lookup
+                    Optional<Building> buildingOpt = buildingRepository.findByNameIgnoreCase(buildingName);
+                    Building building;
+                    if (buildingOpt.isPresent()) {
+                        building = buildingOpt.get();
+                    } else {
+                        building = new Building();
+                        building.setName(buildingName);
+                        building = buildingRepository.save(building);
+                        logger.info("Created new building: {}", buildingName);
+                    }
 
-                Room room = new Room();
-                room.setName(roomName);
-                room.setCapacity(capacity);
-                room.setBuilding(building);
-                roomsBatch.add(room);
+                    // Check if room already exists in the database
+                    Optional<Room> existingRoom = roomRepository.findByNameAndBuildingId(roomName, building.getId());
+                    if (existingRoom.isPresent()) {
+                        Room room = existingRoom.get();
+                        // Update capacity if different
+                        if (room.getCapacity() != capacity) {
+                            room.setCapacity(capacity);
+                            roomsBatch.add(room);
+                            successes.add("Row " + (rowCount + 2) + ": Updated room " + roomName + " in " + buildingName + " with capacity " + capacity);
+                        } else {
+                            successes.add("Row " + (rowCount + 2) + ": Room " + roomName + " in " + buildingName + " already exists, skipped");
+                        }
+                    } else {
+                        Room room = new Room();
+                        room.setName(roomName);
+                        room.setCapacity(capacity);
+                        room.setBuilding(building);
+                        roomsBatch.add(room);
+                        successes.add("Row " + (rowCount + 2) + ": Created room " + roomName + " in " + buildingName + " with capacity " + capacity);
+                    }
 
-                rowCount++;
+                    successfulRows++;
+                    rowCount++;
 
-                if (roomsBatch.size() >= batchSize) {
-                    roomRepository.saveAll(roomsBatch);
-                    roomsBatch.clear();
+                    if (roomsBatch.size() >= batchSize) {
+                        roomRepository.saveAll(roomsBatch);
+                        roomsBatch.clear();
+                    }
+                } catch (Exception e) {
+                    errors.add("Row " + (rowCount + 2) + ": " + e.getMessage());
+                    rowCount++;
+                    continue;
                 }
             }
 
@@ -500,8 +637,19 @@ public class TimetableController {
                 roomRepository.saveAll(roomsBatch);
             }
 
-            redirectAttributes.addFlashAttribute("success", "Rooms uploaded successfully! " + rowCount + " rows processed.");
+            String successMessage = "Rooms uploaded successfully! " + successfulRows + " rows processed.";
+            if (!successes.isEmpty()) {
+                successMessage += " Details: " + String.join("; ", successes);
+            }
+            if (!errors.isEmpty()) {
+                successMessage += " However, some rows failed: " + String.join("; ", errors);
+                redirectAttributes.addFlashAttribute("error", successMessage);
+            } else {
+                redirectAttributes.addFlashAttribute("success", successMessage);
+            }
+            logger.info(successMessage);
         } catch (Exception e) {
+            logger.error("Error processing rooms CSV: {}", e.getMessage(), e);
             redirectAttributes.addFlashAttribute("error", "Error processing rooms CSV: " + e.getMessage());
         }
         return "redirect:/overseer/upload-planner";
@@ -524,64 +672,171 @@ public class TimetableController {
             int batchSize = 1000;
             List<LecturerAvailability> availabilityBatch = new ArrayList<>();
             int rowCount = 0;
+            int successfulRows = 0;
+            int addedCount = 0;
+            int skippedCount = 0;
+
+            Map<String, List<Integer>> errorMap = new HashMap<>();
+            Map<String, Integer> errorCounts = new HashMap<>();
+
+            String[] expectedHeaders = {"lecturerEmail", "dayOfWeek", "startTime", "endTime"};
 
             while ((line = reader.readLine()) != null) {
+                // Remove comments (anything after //) before splitting
+                int commentIndex = line.indexOf("//");
+                if (commentIndex != -1) {
+                    line = line.substring(0, commentIndex).trim();
+                }
+
+                String[] data = line.split(",");
                 if (firstLine) {
-                    String[] headers = line.split(",");
-                    if (!Arrays.equals(headers, new String[]{"lecturerEmail", "dayOfWeek", "startTime", "endTime"})) {
-                        redirectAttributes.addFlashAttribute("error", "Invalid CSV headers. Expected: lecturerEmail,dayOfWeek,startTime,endTime");
+                    if (!Arrays.equals(data, expectedHeaders)) {
+                        redirectAttributes.addFlashAttribute("error", "Invalid CSV headers. Expected: " + String.join(",", expectedHeaders));
                         return "redirect:/overseer/upload-planner";
                     }
                     firstLine = false;
                     continue;
                 }
 
-                String[] data = line.split(",");
                 if (data.length < 4) {
-                    redirectAttributes.addFlashAttribute("error", "Invalid CSV format at row " + (rowCount + 2));
-                    return "redirect:/overseer/upload-planner";
+                    String errorMsg = "Invalid CSV format, expected 4 columns";
+                    errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                    errorCounts.merge(errorMsg, 1, Integer::sum);
+                    logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                    rowCount++;
+                    continue;
                 }
 
-                String lecturerEmail = data[0].trim();
-                String dayOfWeek = data[1].trim();
-                String startTime = data[2].trim();
-                String endTime = data[3].trim();
-
-                Course.DayOfWeek parsedDayOfWeek;
                 try {
-                    parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
-                } catch (IllegalArgumentException e) {
-                    redirectAttributes.addFlashAttribute("error", "Invalid day of week at row " + (rowCount + 2) + ": " + dayOfWeek);
-                    return "redirect:/overseer/upload-planner";
-                }
+                    String lecturerEmail = data[0].trim();
+                    String dayOfWeek = data[1].trim();
+                    String startTime = data[2].trim();
+                    String endTime = data[3].trim();
 
-                LocalTime parsedStartTime, parsedEndTime;
-                try {
-                    parsedStartTime = LocalTime.parse(startTime);
-                    parsedEndTime = LocalTime.parse(endTime);
-                    if (parsedEndTime.isBefore(parsedStartTime) || parsedEndTime.equals(parsedStartTime)) {
-                        throw new IllegalArgumentException("End time must be after start time.");
+                    // Validate email format
+                    if (!lecturerEmail.matches("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$")) {
+                        String errorMsg = "Invalid email format: " + lecturerEmail;
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+
+                    // Validate day of week
+                    Course.DayOfWeek parsedDayOfWeek;
+                    try {
+                        parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+                    } catch (IllegalArgumentException e) {
+                        String errorMsg = "Invalid dayOfWeek: " + dayOfWeek + ". Expected: MONDAY, TUESDAY, ..., SATURDAY";
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+
+                    // Validate time format with regex before parsing
+                    String timePattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$";
+                    if (!startTime.matches(timePattern)) {
+                        String errorMsg = "Invalid startTime format: " + startTime + ". Expected: HH:mm (e.g., 09:00)";
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+                    if (!endTime.matches(timePattern)) {
+                        String errorMsg = "Invalid endTime format: " + endTime + ". Expected: HH:mm (e.g., 11:00)";
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+
+                    // Parse times
+                    LocalTime parsedStartTime, parsedEndTime;
+                    try {
+                        parsedStartTime = LocalTime.parse(startTime);
+                        parsedEndTime = LocalTime.parse(endTime);
+                        if (parsedEndTime.isBefore(parsedStartTime) || parsedEndTime.equals(parsedStartTime)) {
+                            throw new IllegalArgumentException("End time must be after start time.");
+                        }
+                    } catch (Exception e) {
+                        String errorMsg = "Invalid time format: " + e.getMessage();
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+
+                    // Find lecturer
+                    Optional<Lecturer> lecturerOpt = lecturerRepository.findByEmail(lecturerEmail);
+                    if (lecturerOpt.isEmpty()) {
+                        String errorMsg = "Lecturer not found: " + lecturerEmail;
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+                    Lecturer lecturer = lecturerOpt.get();
+
+                    // Check for existing identical availability (idempotency)
+                    Optional<LecturerAvailability> existingAvailability = lecturerAvailabilityRepository
+                            .findByLecturerIdAndDayOfWeekAndTimes(
+                                    lecturer.getId(), parsedDayOfWeek, parsedStartTime, parsedEndTime);
+                    if (existingAvailability.isPresent()) {
+                        skippedCount++;
+                        logger.info("Row {}: Availability for {} on {} {}-{} already exists, skipped",
+                                rowCount + 2, lecturerEmail, dayOfWeek, startTime, endTime);
+                        successfulRows++;
+                        rowCount++;
+                        continue;
+                    }
+
+                    // Check for overlapping availability
+                    List<LecturerAvailability> overlapping = lecturerAvailabilityRepository
+                            .findOverlappingByLecturerIdAndDayOfWeek(
+                                    lecturer.getId(), parsedDayOfWeek, parsedStartTime, parsedEndTime);
+                    if (!overlapping.isEmpty()) {
+                        LecturerAvailability conflict = overlapping.get(0);
+                        String errorMsg = "Overlapping availability for " + lecturerEmail + " on " + dayOfWeek + ": " +
+                                conflict.getStartTime() + "-" + conflict.getEndTime();
+                        errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                        errorCounts.merge(errorMsg, 1, Integer::sum);
+                        logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                        rowCount++;
+                        continue;
+                    }
+
+                    // Create new availability
+                    LecturerAvailability availability = new LecturerAvailability();
+                    availability.setLecturer(lecturer);
+                    availability.setDayOfWeek(parsedDayOfWeek);
+                    availability.setStartTime(parsedStartTime);
+                    availability.setEndTime(parsedEndTime);
+                    availabilityBatch.add(availability);
+
+                    addedCount++;
+                    logger.info("Row {}: Added availability for {} on {} {}-{}",
+                            rowCount + 2, lecturerEmail, dayOfWeek, startTime, endTime);
+                    successfulRows++;
+                    rowCount++;
+
+                    if (availabilityBatch.size() >= batchSize) {
+                        lecturerAvailabilityRepository.saveAll(availabilityBatch);
+                        availabilityBatch.clear();
                     }
                 } catch (Exception e) {
-                    redirectAttributes.addFlashAttribute("error", "Invalid time format at row " + (rowCount + 2) + ": " + e.getMessage());
-                    return "redirect:/overseer/upload-planner";
-                }
-
-                Lecturer lecturer = lecturerRepository.findByEmail(lecturerEmail)
-                        .orElseThrow(() -> new IllegalArgumentException("Lecturer not found: " + lecturerEmail));
-
-                LecturerAvailability availability = new LecturerAvailability();
-                availability.setLecturer(lecturer);
-                availability.setDayOfWeek(parsedDayOfWeek);
-                availability.setStartTime(parsedStartTime);
-                availability.setEndTime(parsedEndTime);
-                availabilityBatch.add(availability);
-
-                rowCount++;
-
-                if (availabilityBatch.size() >= batchSize) {
-                    lecturerAvailabilityRepository.saveAll(availabilityBatch);
-                    availabilityBatch.clear();
+                    String errorMsg = e.getMessage();
+                    errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                    errorCounts.merge(errorMsg, 1, Integer::sum);
+                    logger.error("Row {}: {}", rowCount + 2, errorMsg);
+                    rowCount++;
+                    continue;
                 }
             }
 
@@ -589,8 +844,50 @@ public class TimetableController {
                 lecturerAvailabilityRepository.saveAll(availabilityBatch);
             }
 
-            redirectAttributes.addFlashAttribute("success", "Lecturer availability uploaded successfully! " + rowCount + " rows processed.");
+            // Build concise summary message for successes
+            String successSummary = "Lecturer availability uploaded successfully! " + successfulRows + " rows processed.";
+            if (addedCount > 0 || skippedCount > 0) {
+                List<String> successDetails = new ArrayList<>();
+                if (addedCount > 0) {
+                    successDetails.add("Added " + addedCount + " availabilities");
+                }
+                if (skippedCount > 0) {
+                    successDetails.add("Skipped " + skippedCount + " duplicates");
+                }
+                successSummary += " " + String.join(", ", successDetails) + ".";
+            }
+            redirectAttributes.addFlashAttribute("success", successSummary);
+
+            if (!errorMap.isEmpty()) {
+                List<String> errorSummary = new ArrayList<>();
+                int errorTypeLimit = 5;
+                int totalErrorTypes = errorMap.size();
+                int displayedErrorTypes = 0;
+                for (Map.Entry<String, List<Integer>> entry : errorMap.entrySet()) {
+                    if (displayedErrorTypes >= errorTypeLimit) {
+                        break;
+                    }
+                    String errorMsg = entry.getKey();
+                    List<Integer> rows = entry.getValue();
+                    int count = errorCounts.get(errorMsg);
+                    List<Integer> exampleRows = rows.size() > 5 ? rows.subList(0, 5) : rows;
+                    String rowExamples = exampleRows.stream()
+                            .map(String::valueOf)
+                            .collect(Collectors.joining(", "));
+                    errorSummary.add(errorMsg + ": " + count + " rows (e.g., rows " + rowExamples +
+                            (rows.size() > 5 ? ", ...)" : ")"));
+                    displayedErrorTypes++;
+                }
+                String errorMessage = "Some rows failed: " + String.join("; ", errorSummary) + ".";
+                if (totalErrorTypes > errorTypeLimit) {
+                    errorMessage += " Additional errors logged (" + (totalErrorTypes - errorTypeLimit) + " more types).";
+                }
+                errorMessage += " Check logs for details.";
+                redirectAttributes.addFlashAttribute("error", errorMessage);
+            }
+            logger.info(successSummary + (errorMap.isEmpty() ? "" : " Errors: " + errorMap.toString()));
         } catch (Exception e) {
+            logger.error("Error processing lecturer availability CSV: {}", e.getMessage(), e);
             redirectAttributes.addFlashAttribute("error", "Error processing lecturer availability CSV: " + e.getMessage());
         }
         return "redirect:/overseer/upload-planner";
@@ -612,11 +909,11 @@ public class TimetableController {
             boolean firstLine = true;
             List<Course> coursesToUpdate = new ArrayList<>();
             int rowCount = 0;
-            List<String> errors = new ArrayList<>();
+            Map<String, List<Integer>> errorMap = new HashMap<>();
+            Map<String, Integer> errorCounts = new HashMap<>();
+            int successfulRows = 0;
 
-            String[] expectedHeaders = {
-                    "Course Code", "Department", "Year", "DayOfWeek", "StartTime", "EndTime", "RoomName"
-            };
+            String[] expectedHeaders = {"Course Code", "Department", "Year", "DayOfWeek", "StartTime", "EndTime", "RoomName"};
 
             while ((line = reader.readLine()) != null) {
                 String[] data = line.split(",");
@@ -630,7 +927,10 @@ public class TimetableController {
                 }
 
                 if (data.length != 7) {
-                    errors.add("Row " + (rowCount + 2) + ": Invalid CSV format, expected 7 columns");
+                    String errorMsg = "Invalid CSV format, expected 7 columns";
+                    errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                    errorCounts.merge(errorMsg, 1, Integer::sum);
+                    logger.error("Row {}: {}", rowCount + 2, errorMsg);
                     rowCount++;
                     continue;
                 }
@@ -644,12 +944,7 @@ public class TimetableController {
                     LocalTime endTime = LocalTime.parse(data[5].trim());
                     String roomName = data[6].trim();
 
-                    Course.DayOfWeek parsedDayOfWeek;
-                    try {
-                        parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
-                    } catch (IllegalArgumentException e) {
-                        throw new IllegalArgumentException("Invalid day of week: " + dayOfWeek);
-                    }
+                    Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
 
                     if (endTime.isBefore(startTime) || endTime.equals(startTime)) {
                         throw new IllegalArgumentException("End time must be after start time.");
@@ -657,7 +952,6 @@ public class TimetableController {
 
                     CourseDefinition courseDefinition = courseDefinitionRepository.findByCode(courseCode)
                             .orElseThrow(() -> new IllegalArgumentException("Course code not found: " + courseCode));
-
                     Department department = departmentRepository.findByName(departmentName)
                             .orElseThrow(() -> new IllegalArgumentException("Department not found: " + departmentName));
 
@@ -668,16 +962,14 @@ public class TimetableController {
                     Room room = roomRepository.findByName(roomName)
                             .orElseThrow(() -> new IllegalArgumentException("Room not found: " + roomName));
 
-                    Course course = courseRepository.findByCourseDefinition(courseDefinition)
-                            .orElseGet(() -> {
-                                Course newCourse = new Course();
-                                newCourse.setCourseDefinition(courseDefinition);
-                                newCourse.setStatus(Course.CourseInstanceStatus.DRAFT);
-                                newCourse.setFirstTimeStudents(0);
-                                newCourse.setCarryoverStudents(0);
-                                newCourse.setTotalStudents(0);
-                                return newCourse;
-                            });
+                    // Create a new Course instead of overwriting
+                    Course newCourse = new Course();
+                    newCourse.setCourseDefinition(courseDefinition);
+                    newCourse.setStatus(Course.CourseInstanceStatus.DRAFT);
+                    newCourse.setDayOfWeek(parsedDayOfWeek);
+                    newCourse.setStartTime(startTime);
+                    newCourse.setEndTime(endTime);
+                    newCourse.setRoom(room);
 
                     Lecturer lecturer = courseDefinition.getLecturer();
                     if (lecturer != null) {
@@ -686,7 +978,6 @@ public class TimetableController {
                         }
                         List<Course> conflictingLecturerCourses = courseRepository.findByLecturerAndDayOfWeekAndTimeOverlap(
                                 lecturer.getId(), parsedDayOfWeek, startTime, endTime);
-                        conflictingLecturerCourses.removeIf(c -> c.getId() != null && c.getId().equals(course.getId()));
                         if (!conflictingLecturerCourses.isEmpty()) {
                             Course conflict = conflictingLecturerCourses.get(0);
                             throw new IllegalArgumentException("Lecturer " + lecturer.getEmail() + " is already scheduled for " +
@@ -696,7 +987,6 @@ public class TimetableController {
                     }
 
                     List<Course> conflictingRoomCourses = courseRepository.findByDayOfWeekAndRoomAndTimeOverlap(room, parsedDayOfWeek, startTime, endTime);
-                    conflictingRoomCourses.removeIf(c -> c.getId() != null && c.getId().equals(course.getId()));
                     if (!conflictingRoomCourses.isEmpty()) {
                         Course conflict = conflictingRoomCourses.get(0);
                         throw new IllegalArgumentException("Room " + room.getName() + " is already booked for " +
@@ -704,35 +994,49 @@ public class TimetableController {
                                 conflict.getStartTime() + " to " + conflict.getEndTime());
                     }
 
-                    int studentCount = course.getTotalStudents();
+                    int studentCount = courseDefinition.getTotalStudents() != null ? courseDefinition.getTotalStudents() : 0;
                     if (studentCount > room.getCapacity()) {
                         throw new IllegalArgumentException("Room capacity (" + room.getCapacity() + ") is less than student count (" + studentCount + ")");
                     }
 
-                    course.setDayOfWeek(parsedDayOfWeek);
-                    course.setStartTime(startTime);
-                    course.setEndTime(endTime);
-                    course.setRoom(room);
-                    coursesToUpdate.add(course);
-
-                    rowCount++;
+                    coursesToUpdate.add(newCourse);
+                    successfulRows++;
+                    logger.info("Created new course {} with schedule: {} {}-{}", courseCode, dayOfWeek, startTime, endTime);
                 } catch (Exception e) {
-                    errors.add("Row " + (rowCount + 2) + ": " + e.getMessage());
-                    rowCount++;
-                    continue;
+                    String errorMsg = e.getMessage();
+                    errorMap.computeIfAbsent(errorMsg, k -> new ArrayList<>()).add(rowCount + 2);
+                    errorCounts.merge(errorMsg, 1, Integer::sum);
+                    logger.error("Row {}: {}", rowCount + 2, errorMsg);
                 }
+                rowCount++;
             }
 
             if (!coursesToUpdate.isEmpty()) {
                 courseRepository.saveAll(coursesToUpdate);
             }
 
-            String successMessage = "Timetable sheet uploaded successfully! " + coursesToUpdate.size() + " courses scheduled.";
-            if (!errors.isEmpty()) {
-                successMessage += " However, some rows failed: " + String.join("; ", errors);
-                redirectAttributes.addFlashAttribute("error", successMessage);
-            } else {
-                redirectAttributes.addFlashAttribute("success", successMessage);
+            String successSummary = "Timetable sheet uploaded successfully! " + successfulRows + " courses scheduled.";
+            redirectAttributes.addFlashAttribute("success", successSummary);
+
+            if (!errorMap.isEmpty()) {
+                List<String> errorSummary = new ArrayList<>();
+                int errorTypeLimit = 5;
+                int totalErrorTypes = errorMap.size();
+                int displayedErrorTypes = 0;
+                for (Map.Entry<String, List<Integer>> entry : errorMap.entrySet()) {
+                    if (displayedErrorTypes >= errorTypeLimit) break;
+                    String errorMsg = entry.getKey();
+                    List<Integer> rows = entry.getValue();
+                    int count = errorCounts.get(errorMsg);
+                    List<Integer> exampleRows = rows.size() > 5 ? rows.subList(0, 5) : rows;
+                    String rowExamples = exampleRows.stream().map(String::valueOf).collect(Collectors.joining(", "));
+                    errorSummary.add(errorMsg + ": " + count + " rows (e.g., rows " + rowExamples + (rows.size() > 5 ? ", ...)" : ")"));
+                    displayedErrorTypes++;
+                }
+                String errorMessage = "Some rows failed: " + String.join("; ", errorSummary) + ".";
+                if (totalErrorTypes > errorTypeLimit) errorMessage += " Additional errors logged (" + (totalErrorTypes - errorTypeLimit) + " more types).";
+                errorMessage += " Check logs for details.";
+                redirectAttributes.addFlashAttribute("error", errorMessage);
             }
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error processing timetable sheet CSV: " + e.getMessage());

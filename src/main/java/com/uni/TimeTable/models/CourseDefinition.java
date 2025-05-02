@@ -42,6 +42,16 @@ public class CourseDefinition {
 
     private String elearningLink;
 
+    // Moved from Course entity
+    @Column(nullable = false)
+    private Integer firstTimeStudents;
+
+    @Column(nullable = false)
+    private Integer carryoverStudents;
+
+    @Column(nullable = false)
+    private Integer totalStudents;
+
     public enum CourseStatus {
         Compulsory, Elective
     }

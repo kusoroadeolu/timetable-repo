@@ -94,7 +94,7 @@
                     <td th:text="${#temporals.format(course.endTime, 'HH:mm')}"></td>
                     <td th:text="${course.room != null ? course.room.name : 'N/A'}"></td>
                     <td th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></td>
-                    <td th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></td>
+                    <td th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents : 'N/A'}"></td>
                     <td>
                         <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
                                 th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
@@ -124,7 +124,7 @@
                         <div class="col-md-6">
                             <p><strong>Lecturer:</strong> <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span></p>
                             <p><strong>Status:</strong> <span th:text="${course.status}"></span></p>
-                            <p><strong>Total Students:</strong> <span th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></span></p>
+                            <p><strong>Total Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents : 'N/A'}"></span></p>
                             <p><strong>eLearning Link:</strong>
                                 <a th:if="${course.courseDefinition.elearningLink != null}" th:href="${course.courseDefinition.elearningLink}" target="_blank" class="btn btn-success btn-sm">Access Course</a>
                                 <span th:unless="${course.courseDefinition.elearningLink != null}" class="text-muted">Not available</span>

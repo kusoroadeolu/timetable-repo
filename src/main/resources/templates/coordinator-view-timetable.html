@@ -131,7 +131,7 @@
                 <td th:text="${course.startTime} + ' - ' + ${course.endTime}"></td>
                 <td th:text="${course.room != null ? course.room.name : 'N/A'}"></td>
                 <td th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></td>
-                <td th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></td>
+                <td th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents : 'N/A'}"></td>
                 <td>
                     <button class="btn btn-info btn-sm" data-bs-toggle="modal"
                             th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>

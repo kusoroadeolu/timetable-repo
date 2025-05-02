@@ -63,7 +63,7 @@
                                     </p>
                                     <p class="card-text">
                                         <i class="fas fa-users"></i>
-                                        <span th:text="${course.totalStudents != null ? course.totalStudents + ' Students' : 'N/A'}"></span>
+                                        <span th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents + ' Students' : 'N/A'}"></span>
                                     </p>
                                     <div th:if="${course.courseDefinition.elearningLink != null}" class="badge badge-elearning">eLearning Available</div>
                                 </div>
@@ -90,11 +90,11 @@
                         <div class="col-md-6">
                             <p><strong>Credits:</strong> <span th:text="${course.courseDefinition != null ? course.courseDefinition.credits : 'N/A'}"></span></p>
                             <p><strong>Status:</strong> <span th:text="${course.status}"></span></p>
-                            <p><strong>Total Students:</strong> <span th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></span></p>
+                            <p><strong>Total Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents : 'N/A'}"></span></p>
                         </div>
                         <div class="col-md-6">
-                            <p><strong>First-Time Students:</strong> <span th:text="${course.firstTimeStudents != null ? course.firstTimeStudents : 'N/A'}"></span></p>
-                            <p><strong>Carryover Students:</strong> <span th:text="${course.carryoverStudents != null ? course.carryoverStudents : 'N/A'}"></span></p>
+                            <p><strong>First-Time Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.firstTimeStudents != null ? course.courseDefinition.firstTimeStudents : 'N/A'}"></span></p>
+                            <p><strong>Carryover Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.carryoverStudents != null ? course.courseDefinition.carryoverStudents : 'N/A'}"></span></p>
                             <p><strong>Lecturer:</strong> <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span></p>
                             <p><strong>eLearning Link:</strong>
                                 <a th:if="${course.courseDefinition.elearningLink != null}" th:href="${course.courseDefinition.elearningLink}" target="_blank" class="btn btn-success btn-sm">Access Course</a>

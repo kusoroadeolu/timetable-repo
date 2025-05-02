@@ -26,47 +26,13 @@ public class Lecturer {
     @OneToMany(mappedBy = "lecturer", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<LecturerAvailability> availabilities = new ArrayList<>();
 
-    // Getters and setters
-    public Long getId() {
-        return id;
-    }
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private LecturerType type;
 
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public List<LecturerAvailability> getAvailabilities() {
-        return availabilities;
-    }
-
-    public void setAvailabilities(List<LecturerAvailability> availabilities) {
-        this.availabilities = availabilities;
-    }
-
-    public boolean isAvailable(String dayOfWeek, LocalTime startTime, LocalTime endTime) {
-        Course.DayOfWeek parsedDayOfWeek;
-        try {
-            parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
-        } catch (IllegalArgumentException e) {
-            return false; // Invalid day, treat as unavailable
-        }
-        return isAvailable(parsedDayOfWeek, startTime, endTime);
+    public enum LecturerType {
+        FULL_TIME,
+        ADJUNCT
     }
 
     public boolean isAvailable(Course.DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime) {
