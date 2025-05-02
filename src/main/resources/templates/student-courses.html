@@ -19,25 +19,40 @@
 <div class="container mt-4">
     <h2>View Courses</h2>
     <div class="mb-3">
-        <a th:href="@{/student/timetable(departmentId=${selectedDepartmentId}, year=${selectedYear})}" class="btn btn-outline-primary">View Timetable</a>
+        <a th:href="@{/student/timetable(schoolId=${selectedSchoolId}, departmentId=${selectedDepartmentId}, year=${selectedYear})}" class="btn btn-outline-primary">View Timetable</a>
     </div>
     <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
 
-    <div th:if="${selectedDepartmentId == null or selectedYear == null}">
+    <div th:if="${selectedSchoolId == null or selectedDepartmentId == null or selectedYear == null}">
         <form th:action="@{/student/courses}" method="get" class="mb-3">
             <div class="row g-3">
                 <div class="col-md-4">
+                    <label for="schoolId" class="form-label">School</label>
+                    <select id="schoolId" name="schoolId" class="form-select" onchange="updateDepartments()" required>
+                        <option value="">Select School</option>
+                        <option th:each="school : ${schools}"
+                                th:value="${school.id}"
+                                th:text="${school.name}"
+                                th:selected="${school.id == selectedSchoolId}">
+                        </option>
+                    </select>
+                </div>
+                <div class="col-md-4">
                     <label for="departmentId" class="form-label">Department</label>
-                    <select name="departmentId" id="departmentId" class="form-select" required>
+                    <select id="departmentId" name="departmentId" class="form-select" required>
                         <option value="">Select Department</option>
-                        <option th:each="dept : ${departments}" th:value="${dept.id}" th:text="${dept.name}"></option>
+                        <option th:each="dept : ${departments}"
+                                th:value="${dept.id}"
+                                th:text="${dept.name}"
+                                th:selected="${dept.id == selectedDepartmentId}">
+                        </option>
                     </select>
                 </div>
                 <div class="col-md-4">
                     <label for="year" class="form-label">Year</label>
                     <select name="year" id="year" class="form-select" required>
                         <option value="">Select Year</option>
-                        <option th:each="yr : ${years}" th:value="${yr}" th:text="${yr}"></option>
+                        <option th:each="yr : ${years}" th:value="${yr}" th:text="${yr}" th:selected="${yr == selectedYear}"></option>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -47,7 +62,7 @@
         </form>
     </div>
 
-    <div th:if="${selectedDepartmentId != null and selectedYear != null}">
+    <div th:if="${selectedSchoolId != null and selectedDepartmentId != null and selectedYear != null}">
         <div th:if="${courses != null}">
             <div id="coursesContainer" class="row">
                 <div th:each="course : ${courses}" class="col-md-6 col-lg-4 course-card">
@@ -55,17 +70,17 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <h5 class="course-code" th:text="${course.courseDefinition.code}"></h5>
-                                    <p class="card-text" th:text="${course.courseDefinition.name}"></p>
+                                    <h5 class="course-code" th:text="${course.code}"></h5>
+                                    <p class="card-text" th:text="${course.name}"></p>
                                     <p class="card-text">
                                         <i class="fas fa-chalkboard-teacher"></i>
-                                        <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span>
+                                        <span th:text="${course.lecturer != null ? course.lecturer.name : 'N/A'}"></span>
                                     </p>
                                     <p class="card-text">
                                         <i class="fas fa-users"></i>
-                                        <span th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents + ' Students' : 'N/A'}"></span>
+                                        <span th:text="${course.totalStudents != null ? course.totalStudents + ' Students' : 'N/A'}"></span>
                                     </p>
-                                    <div th:if="${course.courseDefinition.elearningLink != null}" class="badge badge-elearning">eLearning Available</div>
+                                    <div th:if="${course.elearningLink != null}" class="badge badge-elearning">eLearning Available</div>
                                 </div>
                                 <button type="button" class="btn btn-info btn-sm details-btn" data-bs-toggle="modal"
                                         th:attr="data-bs-target='#courseModal' + ${course.id}">Details</button>
@@ -82,23 +97,23 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title" th:text="${course.courseDefinition.code} + ' - ' + ${course.courseDefinition.name}"></h5>
+                    <h5 class="modal-title" th:text="${course.code} + ' - ' + ${course.name}"></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <p><strong>Credits:</strong> <span th:text="${course.courseDefinition != null ? course.courseDefinition.credits : 'N/A'}"></span></p>
+                            <p><strong>Credits:</strong> <span th:text="${course.credits != null ? course.credits : 'N/A'}"></span></p>
                             <p><strong>Status:</strong> <span th:text="${course.status}"></span></p>
-                            <p><strong>Total Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.totalStudents != null ? course.courseDefinition.totalStudents : 'N/A'}"></span></p>
+                            <p><strong>Total Students:</strong> <span th:text="${course.totalStudents != null ? course.totalStudents : 'N/A'}"></span></p>
                         </div>
                         <div class="col-md-6">
-                            <p><strong>First-Time Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.firstTimeStudents != null ? course.courseDefinition.firstTimeStudents : 'N/A'}"></span></p>
-                            <p><strong>Carryover Students:</strong> <span th:text="${course.courseDefinition != null and course.courseDefinition.carryoverStudents != null ? course.courseDefinition.carryoverStudents : 'N/A'}"></span></p>
-                            <p><strong>Lecturer:</strong> <span th:text="${course.courseDefinition.lecturer != null ? course.courseDefinition.lecturer.name : 'N/A'}"></span></p>
+                            <p><strong>First-Time Students:</strong> <span th:text="${course.firstTimeStudents != null ? course.firstTimeStudents : 'N/A'}"></span></p>
+                            <p><strong>Carryover Students:</strong> <span th:text="${course.carryoverStudents != null ? course.carryoverStudents : 'N/A'}"></span></p>
+                            <p><strong>Lecturer:</strong> <span th:text="${course.lecturer != null ? course.lecturer.name : 'N/A'}"></span></p>
                             <p><strong>eLearning Link:</strong>
-                                <a th:if="${course.courseDefinition.elearningLink != null}" th:href="${course.courseDefinition.elearningLink}" target="_blank" class="btn btn-success btn-sm">Access Course</a>
-                                <span th:unless="${course.courseDefinition.elearningLink != null}" class="text-muted">Not available</span>
+                                <a th:if="${course.elearningLink != null}" th:href="${course.elearningLink}" target="_blank" class="btn btn-success btn-sm">Access Course</a>
+                                <span th:unless="${course.elearningLink != null}" class="text-muted">Not available</span>
                             </p>
                         </div>
                     </div>
@@ -116,17 +131,60 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    function scrollToTop() {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-    window.onscroll = function() {
-        var btn = document.getElementById('backToTop');
-        if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
-            btn.style.display = 'block';
-        } else {
-            btn.style.display = 'none';
+    function updateDepartments() {
+        const schoolId = document.getElementById('schoolId').value;
+        const departmentSelect = document.getElementById('departmentId');
+
+        departmentSelect.innerHTML = '<option value="">Select Department</option>';
+
+        if (schoolId) {
+            $.ajax({
+                url: '/student/departments-by-school',
+                data: { schoolId: schoolId },
+                success: function(departments) {
+                    console.log('Departments received:', departments);
+                    if (departments && departments.length > 0) {
+                        departments.forEach(dept => {
+                            const option = document.createElement('option');
+                            option.value = dept.id;
+                            option.textContent = dept.name;
+                            departmentSelect.appendChild(option);
+                        });
+                    } else {
+                        console.log('No departments found for schoolId: ' + schoolId);
+                        alert('No departments found for the selected school.');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching departments:', error);
+                    console.error('Status:', status);
+                    console.error('Response:', xhr.responseText);
+                    alert('Error fetching departments. Check console for details. Status: ' + status);
+                }
+            });
         }
-    };
+    }
+
+    $(document).ready(function() {
+        updateDepartments();
+
+        var modalTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="modal"]'));
+        modalTriggerList.forEach(function (triggerEl) {
+            new bootstrap.Modal(triggerEl);
+        });
+
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        window.onscroll = function() {
+            var btn = document.getElementById('backToTop');
+            if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+                btn.style.display = 'block';
+            } else {
+                btn.style.display = 'none';
+            }
+        };
+    });
 </script>
 </body>
 </html>

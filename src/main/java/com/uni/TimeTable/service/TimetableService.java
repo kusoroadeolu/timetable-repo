@@ -238,66 +238,58 @@ public class TimetableService {
         return departmentRepository.findBySchoolId(schoolId);
     }
 
-    public List<Course> getTimetable(Long schoolId, Long departmentId, Integer year, String dayOfWeek, Authentication auth) {
-        List<Course> courses;
-        boolean isOverseer = auth != null && auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_OVERSEER"));
-
-        if (isOverseer) {
-            // Overseers see both DRAFT and FINALIZED courses
-            if (departmentId != null && year != null) {
-                courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYear(departmentId, year);
-            } else if (departmentId != null) {
-                courses = courseRepository.findByCourseDefinitionDepartmentId(departmentId);
-            } else if (year != null) {
-                courses = courseRepository.findByCourseDefinitionYear(year);
-            } else {
-                courses = courseRepository.findAll();
-            }
-        } else {
-            // Non-overseers see only FINALIZED courses
-            Course.CourseInstanceStatus statusFilter = Course.CourseInstanceStatus.FINALIZED;
-            if (departmentId != null && year != null) {
-                courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
-                        departmentId, year, statusFilter);
-            } else if (departmentId != null) {
-                courses = courseRepository.findByCourseDefinitionDepartmentIdAndStatus(
-                        departmentId, statusFilter);
-            } else if (year != null) {
-                courses = courseRepository.findByCourseDefinitionYearAndStatus(
-                        year, statusFilter);
-            } else {
-                courses = courseRepository.findByStatus(statusFilter);
-            }
-        }
-
-        // Apply schoolId filter if provided
-        if (schoolId != null) {
-            courses = courses.stream()
-                    .filter(course -> course.getCourseDefinition().getDepartment().getSchool().getId().equals(schoolId))
-                    .collect(Collectors.toList());
-        }
-
-        // Apply dayOfWeek filter if provided
-        if (dayOfWeek != null && !dayOfWeek.isEmpty()) {
-            Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
-            courses = courses.stream()
-                    .filter(course -> course.getDayOfWeek() == parsedDayOfWeek)
-                    .collect(Collectors.toList());
-        }
-
-        return courses;
-    }
+//    public List<Course> getTimetable(Long schoolId, Long departmentId, Integer year, String dayOfWeek, Authentication auth) {
+//        List<Course> courses;
+//        boolean isOverseer = auth != null && auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_OVERSEER"));
+//
+//        if (isOverseer) {
+//            // Overseers see both DRAFT and FINALIZED courses
+//            if (departmentId != null && year != null) {
+//                courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYear(departmentId, year);
+//            } else if (departmentId != null) {
+//                courses = courseRepository.findByCourseDefinitionDepartmentId(departmentId);
+//            } else if (year != null) {
+//                courses = courseRepository.findByCourseDefinitionYear(year);
+//            } else {
+//                courses = courseRepository.findAll();
+//            }
+//        } else {
+//            // Non-overseers see only FINALIZED courses
+//            Course.CourseInstanceStatus statusFilter = Course.CourseInstanceStatus.FINALIZED;
+//            if (departmentId != null && year != null) {
+//                courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
+//                        departmentId, year, statusFilter);
+//            } else if (departmentId != null) {
+//                courses = courseRepository.findByCourseDefinitionDepartmentIdAndStatus(
+//                        departmentId, statusFilter);
+//            } else if (year != null) {
+//                courses = courseRepository.findByCourseDefinitionYearAndStatus(
+//                        year, statusFilter);
+//            } else {
+//                courses = courseRepository.findByStatus(statusFilter);
+//            }
+//        }
+//
+//        // Apply schoolId filter if provided
+//        if (schoolId != null) {
+//            courses = courses.stream()
+//                    .filter(course -> course.getCourseDefinition().getDepartment().getSchool().getId().equals(schoolId))
+//                    .collect(Collectors.toList());
+//        }
+//
+//        // Apply dayOfWeek filter if provided
+//        if (dayOfWeek != null && !dayOfWeek.isEmpty()) {
+//            Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+//            courses = courses.stream()
+//                    .filter(course -> course.getDayOfWeek() == parsedDayOfWeek)
+//                    .collect(Collectors.toList());
+//        }
+//
+//        return courses;
+//    }
 
     public List<CoordinatorAssignment> getCoordinatorAssignments(Authentication auth) {
         return new ArrayList<>();
-    }
-
-    public List<Course> getStudentCourses(Long departmentId, Integer year) {
-        if (departmentId == null || year == null) {
-            return new ArrayList<>();
-        }
-        return courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
-                departmentId, year, Course.CourseInstanceStatus.FINALIZED);
     }
 
     @Transactional(readOnly = true)
@@ -335,5 +327,33 @@ public class TimetableService {
         return rooms.stream()
                 .map(room -> new RoomDTO(room.getId(), room.getName()))
                 .collect(Collectors.toList());
+    }
+
+    public List<CourseDefinition> getStudentCourseDefinition(Long departmentId, Integer year) {
+        if (departmentId == null || year == null) {
+            return List.of();
+        }
+        return courseDefinitionRepository.findCourseDefinitionsByDepartmentIdAndYearAndCourseStatus(
+                departmentId, year, Course.CourseInstanceStatus.FINALIZED);
+    }
+
+    public List<Course> getTimetable(Long schoolId, Long departmentId, Integer year, String dayOfWeek, Authentication auth) {
+        List<Course> courses;
+        boolean isOverseer = auth != null && auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_OVERSEER"));
+
+        if (isOverseer) {
+            courses = courseRepository.findBySchoolIdAndDepartmentIdAndYear(schoolId, departmentId, year);
+        } else {
+            courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(departmentId, year, Course.CourseInstanceStatus.FINALIZED);
+        }
+
+        if (dayOfWeek != null && !dayOfWeek.isEmpty()) {
+            Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
+            courses = courses.stream()
+                    .filter(course -> course.getDayOfWeek() == parsedDayOfWeek)
+                    .collect(Collectors.toList());
+        }
+
+        return courses;
     }
 }

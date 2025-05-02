@@ -125,6 +125,7 @@ public class TimetableController {
                 .collect(Collectors.toList());
     }
 
+
     @GetMapping("/overseer/course-definitions-by-dept-and-year")
     @ResponseBody
     public List<Map<String, Object>> getCourseDefinitionsByDeptAndYear(
@@ -1169,41 +1170,70 @@ public class TimetableController {
 
     @GetMapping("/student/timetable")
     public String getStudentTimetable(
+            @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) String dayOfWeek,
             Model model) {
-        model.addAttribute("departments", timetableService.getDepartmentsBySchool(null));
+        model.addAttribute("schools", timetableService.getAllSchools());
+        model.addAttribute("departments", timetableService.getDepartmentsBySchool(schoolId));
         model.addAttribute("years", YEARS);
         model.addAttribute("daysOfWeek", DAYS_OF_WEEK);
 
-        if (departmentId == null || year == null) {
-            return "student-timetable";
+        if (schoolId != null && departmentId != null && year != null) {
+            List<Course> courses = timetableService.getTimetable(schoolId, departmentId, year, dayOfWeek, null);
+            model.addAttribute("courses", courses);
+            model.addAttribute("selectedSchoolId", schoolId);
+            model.addAttribute("selectedDepartmentId", departmentId);
+            model.addAttribute("selectedYear", year);
+            model.addAttribute("selectedDayOfWeek", dayOfWeek);
+        } else if (schoolId != null && departmentId != null) {
+            model.addAttribute("selectedSchoolId", schoolId);
+            model.addAttribute("selectedDepartmentId", departmentId);
+        } else if (schoolId != null) {
+            model.addAttribute("selectedSchoolId", schoolId);
         }
-
-        model.addAttribute("selectedDepartmentId", departmentId);
-        model.addAttribute("selectedYear", year);
-        model.addAttribute("selectedDayOfWeek", dayOfWeek);
-
-        List<Course> courses = timetableService.getTimetable(null, departmentId, year, dayOfWeek, null);
-        model.addAttribute("courses", courses);
 
         return "student-timetable";
     }
 
+    @GetMapping("/student/departments-by-school")
+    @ResponseBody
+    public List<Map<String, Object>> getDepartmentsBySchoolForStudent(@RequestParam(required = false) Long schoolId) {
+        System.out.println("Fetching departments for student with schoolId: " + schoolId);
+        List<Department> departments = timetableService.getDepartmentsBySchool(schoolId);
+        System.out.println("Found " + departments.size() + " departments for student: " + departments);
+        return departments.stream()
+                .map(dept -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", dept.getId());
+                    item.put("name", dept.getName());
+                    return item;
+                })
+                .collect(Collectors.toList());
+    }
+
     @GetMapping("/student/courses")
     public String getStudentCourses(
+            @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) Integer year,
             Model model) {
-        model.addAttribute("departments", timetableService.getDepartmentsBySchool(null));
+        model.addAttribute("schools", timetableService.getAllSchools());
+        model.addAttribute("departments", timetableService.getDepartmentsBySchool(schoolId));
         model.addAttribute("years", YEARS);
 
-        if (departmentId != null && year != null) {
-            List<Course> courses = timetableService.getStudentCourses(departmentId, year);
+        if (schoolId != null && departmentId != null && year != null) {
+            List<CourseDefinition> courses = timetableService.getStudentCourseDefinition(departmentId, year);
             model.addAttribute("courses", courses);
+            model.addAttribute("selectedSchoolId", schoolId);
             model.addAttribute("selectedDepartmentId", departmentId);
             model.addAttribute("selectedYear", year);
+        } else if (schoolId != null && departmentId != null) {
+            model.addAttribute("selectedSchoolId", schoolId);
+            model.addAttribute("selectedDepartmentId", departmentId);
+        } else if (schoolId != null) {
+            model.addAttribute("selectedSchoolId", schoolId);
         }
 
         return "student-courses";

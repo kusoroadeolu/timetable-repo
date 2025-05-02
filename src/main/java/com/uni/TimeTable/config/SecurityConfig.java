@@ -29,13 +29,11 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
+                        .requestMatchers("/student/departments-by-school").permitAll() // Explicitly permit this endpoint
                         .requestMatchers("/", "/timetable", "/student/**").permitAll()
                         .requestMatchers("/login", "/logout").permitAll()
-                        // Restricted endpoints
                         .requestMatchers("/overseer/**").hasRole("OVERSEER")
                         .requestMatchers("/coordinator/**").hasRole("COORDINATOR")
-                        // Any other request requires authentication
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
@@ -47,7 +45,8 @@ public class SecurityConfig {
                         .logoutSuccessUrl("/login?logout")
                         .permitAll()
                 )
-                .csrf(csrf -> csrf.disable()); // Disable CSRF for simplicity during testing
+                .csrf(csrf -> csrf.disable());
+
         return http.build();
     }
 
