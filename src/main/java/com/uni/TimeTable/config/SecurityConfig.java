@@ -57,10 +57,11 @@ public class SecurityConfig {
             @Override
             public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
                                                 Authentication authentication) throws IOException {
+                // Spring Security authorities include the "ROLE_" prefix
                 String role = authentication.getAuthorities().iterator().next().getAuthority();
-                if (role.equals("ROLE_OVERSEER")) {
+                if ("ROLE_OVERSEER".equals(role)) {
                     response.sendRedirect("/overseer/timetable");
-                } else if (role.equals("ROLE_COORDINATOR")) {
+                } else if ("ROLE_COORDINATOR".equals(role)) {
                     response.sendRedirect("/coordinator/view-timetable");
                 } else {
                     response.sendRedirect("/");

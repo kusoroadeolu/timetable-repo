@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>Reassign Course</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+        background-color: #f8f9fa;
+    }
+    .form-container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        max-width: 500px;
+    }
+  </style>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+<div class="container mt-5">
+  <h2>Reassign Course (Overseer)</h2>
+  <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+  <div th:if="${success}" class="alert alert-success" th:text="${success}"></div>
+  <div class="form-container">
+    <h4 th:text="${course.courseDefinition.name} + ' (' + ${course.courseDefinition.department.name} + ' Year ' + ${course.courseDefinition.year} + ')'"></h4>
+    <p>Current Schedule: <span th:text="${course.dayOfWeek} + ', ' + ${course.startTime} + ' - ' + ${course.endTime} + ', Room: ' + ${course.room?.name ?: 'N/A'} + ', Building: ' + ${course.room?.building?.name ?: 'N/A'}"></span></p>
+    <form th:action="@{/overseer/reassign-course}" method="post" id="reassignForm">
+      <input type="hidden" name="courseId" th:value="${course.id}"/>
+      <div class="mb-3">
+        <label class="form-label">Day of Week</label>
+        <select name="dayOfWeek" class="form-select" id="dayOfWeek" required>
+          <option value="">Select Day</option>
+          <option th:each="day : ${daysOfWeek}"
+                  th:value="${day}"
+                  th:text="${day}"
+                  th:selected="${#strings.equals(selectedDayOfWeek ?: course.dayOfWeek?.name() ?: '', day.name())}">
+          </option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Start Time</label>
+        <input type="time" name="startTime" class="form-control" id="startTime" th:value="${selectedStartTime ?: course.startTime}" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">End Time</label>
+        <input type="time" name="endTime" class="form-control" id="endTime" th:value="${selectedEndTime ?: course.endTime}" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Building</label>
+        <select name="buildingId" class="form-select" id="buildingId" required onchange="updateAvailableRooms()">
+          <option value="">Select Building</option>
+          <option th:each="building : ${buildings}"
+                  th:value="${building.id}"
+                  th:text="${building.name}"
+                  th:selected="${course.room?.building?.id == building.id}">
+          </option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Room</label>
+        <select name="roomId" class="form-select" id="roomId" required>
+          <option value="">Select Room</option>
+          <option th:each="room : ${rooms}"
+                  th:value="${room.id}"
+                  th:text="${room.name}"
+                  th:selected="${selectedRoomId != null ? room.id == selectedRoomId : (course.room != null and room.id == course.room.id)}">
+          </option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary w-100">Reassign Course</button>
+    </form>
+  </div>
+  <a href="/overseer/timetable" class="btn btn-secondary mt-3">Back to Timetable</a>
+  <a href="/logout" class="btn btn-secondary mt-3">Logout</a>
+</div>
+
+<script>
+  $(document).ready(function() {
+    // Function to update available rooms
+    function updateAvailableRooms() {
+      const courseId = $("input[name='courseId']").val();
+      const dayOfWeek = $("#dayOfWeek").val();
+      const startTime = $("#startTime").val();
+      const endTime = $("#endTime").val();
+      const buildingId = $("#buildingId").val();
+
+      if (!buildingId) {
+        $("#roomId").empty().append($('<option>', { value: '', text: 'Select Building First' }));
+        return;
+      }
+
+      $.ajax({
+        url: '/overseer/available-rooms',
+        type: 'GET',
+        data: {
+          courseId: courseId,
+          dayOfWeek: dayOfWeek,
+          startTime: startTime,
+          endTime: endTime,
+          buildingId: buildingId
+        },
+        success: function(response) {
+          const roomSelect = $("#roomId");
+          roomSelect.empty();
+          roomSelect.append($('<option>', {
+            value: '',
+            text: 'Select Room'
+          }));
+          response.forEach(room => {
+            roomSelect.append($('<option>', {
+              value: room.id,
+              text: room.name
+            }));
+          });
+          // Preserve the selected room if it still exists in the new list
+          const currentRoomId = $("option[selected]", roomSelect).val() || $("#roomId").data("selected-room-id");
+          if (currentRoomId && response.some(room => room.id == currentRoomId)) {
+            roomSelect.val(currentRoomId);
+          }
+        },
+        error: function(xhr, status, error) {
+          console.error('Error fetching available rooms:', error);
+          alert('Error updating room list. Please try again.');
+        }
+      });
+    }
+
+    // Trigger update on change of day, start time, end time, or building
+    $("#dayOfWeek, #startTime, #endTime, #buildingId").on('change', function() {
+      updateAvailableRooms();
+    });
+
+    // Initial load
+    updateAvailableRooms();
+    $("#roomId").data("selected-room-id", $("option[selected]", "#roomId").val());
+  });
+</script>
+</body>
+</html>

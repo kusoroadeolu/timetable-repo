@@ -259,7 +259,7 @@
             console.log('Updating rooms for buildingId:', buildingId, 'dayOfWeek:', dayOfWeek, 'startTime:', startTime, 'endTime:', endTime);
 
             $.ajax({
-                url: '/overseer/available-rooms',
+                url: '/overseer/available-rooms-by-building', // Updated endpoint
                 data: {
                     buildingId: buildingId,
                     dayOfWeek: dayOfWeek,

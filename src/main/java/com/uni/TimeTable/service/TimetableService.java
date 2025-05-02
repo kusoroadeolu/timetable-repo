@@ -1,5 +1,6 @@
 package com.uni.TimeTable.service;
 
+import com.uni.TimeTable.DTO.RoomDTO;
 import com.uni.TimeTable.exception.ConflictException;
 import com.uni.TimeTable.models.*;
 import com.uni.TimeTable.repository.*;
@@ -40,7 +41,7 @@ public class TimetableService {
             Authentication auth) throws ConflictException {
         CourseDefinition courseDefinition = courseDefinitionRepository.findById(courseDefinitionId)
                 .orElseThrow(() -> new IllegalArgumentException("CourseDefinition not found"));
-        Lecturer lecturer = courseDefinition.getLecturer(); // Use lecturer from CourseDefinition
+        Lecturer lecturer = courseDefinition.getLecturer();
         if (lecturer == null) {
             throw new IllegalArgumentException("No lecturer assigned to CourseDefinition: " + courseDefinition.getCode());
         }
@@ -109,9 +110,9 @@ public class TimetableService {
     }
 
     @Transactional
-    public void reassignRoom(Long courseId, Long roomId, String dayOfWeek, String startTime, String endTime, Authentication auth) throws ConflictException {
+    public void reassignCourse(Long courseId, String dayOfWeek, String startTime, String endTime, Long roomId, Authentication auth) throws ConflictException {
         Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new IllegalArgumentException("Course not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Course not found with ID: " + courseId));
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new IllegalArgumentException("Room not found"));
 
@@ -154,11 +155,28 @@ public class TimetableService {
             throw new IllegalArgumentException("Room capacity (" + room.getCapacity() + ") is less than student count (" + studentCount + ")");
         }
 
+        // Update course details
         course.setRoom(room);
         course.setDayOfWeek(parsedDayOfWeek);
         course.setStartTime(parsedStartTime);
         course.setEndTime(parsedEndTime);
         courseRepository.save(course);
+
+        // Optional: Log the change or trigger notifications for finalized courses
+        // if (course.getStatus() == Course.CourseInstanceStatus.FINALIZED) {
+        //     // Log or notify logic here (e.g., send email to students/lecturers)
+        // }
+    }
+
+    @Transactional(readOnly = true)
+    public Course getCourseById(Long courseId, Authentication auth) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found with ID: " + courseId));
+        // Add authorization check if needed (e.g., ensure overseer has access)
+        if (auth != null && !auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_OVERSEER"))) {
+            throw new SecurityException("Unauthorized access to course details");
+        }
+        return course;
     }
 
     @Transactional
@@ -280,5 +298,42 @@ public class TimetableService {
         }
         return courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
                 departmentId, year, Course.CourseInstanceStatus.FINALIZED);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RoomDTO> getAvailableRooms(Course course, String dayOfWeek, String startTime, String endTime, Long buildingId) {
+        Long effectiveBuildingId = buildingId != null ? buildingId :
+                (course != null && course.getRoom() != null && course.getRoom().getBuilding() != null)
+                        ? course.getRoom().getBuilding().getId()
+                        : null;
+
+        if (effectiveBuildingId == null) {
+            return new ArrayList<>();
+        }
+
+        Course.DayOfWeek parsedDayOfWeek = (dayOfWeek != null && !dayOfWeek.isEmpty())
+                ? Course.DayOfWeek.valueOf(dayOfWeek)
+                : (course != null ? course.getDayOfWeek() : null);
+        LocalTime parsedStartTime = (startTime != null && !startTime.isEmpty())
+                ? LocalTime.parse(startTime)
+                : (course != null ? course.getStartTime() : null);
+        LocalTime parsedEndTime = (endTime != null && !endTime.isEmpty())
+                ? LocalTime.parse(endTime)
+                : (course != null ? course.getEndTime() : null);
+
+        List<Room> rooms;
+        if (parsedDayOfWeek == null || parsedStartTime == null || parsedEndTime == null) {
+            rooms = roomRepository.findByBuildingId(effectiveBuildingId);
+        } else {
+            rooms = roomRepository.findAvailableRoomsByBuildingAndTime(
+                    effectiveBuildingId, parsedDayOfWeek, parsedStartTime, parsedEndTime);
+            if (course != null && course.getRoom() != null) {
+                rooms.removeIf(room -> room.getId().equals(course.getRoom().getId()));
+            }
+        }
+
+        return rooms.stream()
+                .map(room -> new RoomDTO(room.getId(), room.getName()))
+                .collect(Collectors.toList());
     }
 }

@@ -1,5 +1,6 @@
 package com.uni.TimeTable.models;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,5 +23,6 @@ public class Room {
 
     @ManyToOne
     @JoinColumn(name = "building_id")
+    @JsonManagedReference
     private Building building;
 }

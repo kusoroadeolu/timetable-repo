@@ -1,5 +1,6 @@
 package com.uni.TimeTable.controller;
 
+import com.uni.TimeTable.DTO.RoomDTO;
 import com.uni.TimeTable.models.*;
 import com.uni.TimeTable.exception.ConflictException;
 import com.uni.TimeTable.repository.*;
@@ -21,6 +22,7 @@ import jakarta.transaction.Transactional;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -60,7 +62,7 @@ public class TimetableController {
         // Fetch data
         List<School> schools = timetableService.getAllSchools();
         List<Department> departments = timetableService.getDepartmentsBySchool(schoolId);
-        List<Integer> years = Arrays.asList(1, 2, 3, 4); // Adjust as per your logic
+        List<Integer> years = Arrays.asList(1, 2, 3, 4);
         List<Course> courses = timetableService.getTimetable(schoolId, departmentId, year, null, auth);
 
         // If a department filter is applied, only include that department
@@ -70,7 +72,7 @@ public class TimetableController {
                     .filter(dept -> dept.getId().equals(departmentId))
                     .collect(Collectors.toList());
         } else {
-            filteredDepartments = departments; // Show all departments if no filter
+            filteredDepartments = departments;
         }
 
         // Group courses by department, only for the filtered departments
@@ -84,8 +86,8 @@ public class TimetableController {
 
         // Add attributes to the model
         model.addAttribute("schools", schools);
-        model.addAttribute("departments", departments); // Still pass all departments for the filter dropdown
-        model.addAttribute("filteredDepartments", filteredDepartments); // Pass filtered departments for display
+        model.addAttribute("departments", departments);
+        model.addAttribute("filteredDepartments", filteredDepartments);
         model.addAttribute("years", years);
         model.addAttribute("coursesByDept", coursesByDept);
         model.addAttribute("selectedSchoolId", schoolId);
@@ -106,7 +108,6 @@ public class TimetableController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error removing course: " + e.getMessage(), e);
         }
     }
-
 
     @GetMapping("/overseer/departments-by-school")
     @ResponseBody
@@ -151,9 +152,9 @@ public class TimetableController {
                 .collect(Collectors.toList());
     }
 
-    @GetMapping("/overseer/available-rooms")
+    @GetMapping("/overseer/available-rooms-by-building")
     @ResponseBody
-    public List<Map<String, Object>> getAvailableRooms(
+    public List<Map<String, Object>> getAvailableRoomsByBuilding(
             @RequestParam Long buildingId,
             @RequestParam String dayOfWeek,
             @RequestParam String startTime,
@@ -224,7 +225,7 @@ public class TimetableController {
         model.addAttribute("courseDefinitions", courseDefinitions);
         model.addAttribute("schools", timetableService.getAllSchools());
         model.addAttribute("departments", departments);
-        model.addAttribute("buildings", buildingRepository.findAll()); // Ensure this is present
+        model.addAttribute("buildings", buildingRepository.findAll());
         model.addAttribute("daysOfWeek", DAYS_OF_WEEK);
         model.addAttribute("years", YEARS);
         model.addAttribute("selectedSchoolId", schoolId);
@@ -257,7 +258,7 @@ public class TimetableController {
             }
 
             timetableService.scheduleTimetable(courseDefinitionId, departmentId, year, startTime, endTime,
-                    dayOfWeek, null, elearningLink, roomId, auth); // Pass null for lecturerId
+                    dayOfWeek, null, elearningLink, roomId, auth);
             redirectAttributes.addFlashAttribute("success", "Timetable scheduled successfully!");
         } catch (ConflictException | IllegalArgumentException e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());
@@ -265,31 +266,91 @@ public class TimetableController {
         return "redirect:/overseer/schedule-timetable";
     }
 
-    @GetMapping("/overseer/reassign-room")
-    public String getReassignRoom(Model model) {
-        List<Course> courses = courseRepository.findAll();
-        model.addAttribute("courses", courses);
-        model.addAttribute("rooms", roomRepository.findAll());
-        model.addAttribute("daysOfWeek", DAYS_OF_WEEK);
-        return "overseer-reassign-room";
+    @GetMapping("/overseer/reassign-course")
+    public String showReassignCourse(@RequestParam(required = false) Long courseId, Model model, Authentication auth, RedirectAttributes redirectAttributes) {
+        if (courseId == null) {
+            redirectAttributes.addFlashAttribute("error", "Course ID is required to reassign a course.");
+            return "redirect:/overseer/timetable";
+        }
+        Course course = timetableService.getCourseById(courseId, auth);
+        Long initialBuildingId = (course.getRoom() != null && course.getRoom().getBuilding() != null)
+                ? course.getRoom().getBuilding().getId()
+                : null;
+        List<RoomDTO> rooms = timetableService.getAvailableRooms(course, null, null, null, initialBuildingId);
+        List<DayOfWeek> daysOfWeek = Arrays.asList(DayOfWeek.values());
+        List<Building> buildings = buildingRepository.findAll();
+
+        model.addAttribute("course", course);
+        model.addAttribute("rooms", rooms);
+        model.addAttribute("daysOfWeek", daysOfWeek);
+        model.addAttribute("buildings", buildings);
+
+        return "overseer-reassign-course";
     }
 
-    @PostMapping("/overseer/reassign-room")
-    public String reassignRoom(
+    @PostMapping("/overseer/reassign-course")
+    public String reassignCourse(
             @RequestParam Long courseId,
-            @RequestParam Long roomId,
             @RequestParam String dayOfWeek,
             @RequestParam String startTime,
             @RequestParam String endTime,
+            @RequestParam Long roomId,
             Authentication auth,
-            RedirectAttributes redirectAttributes) {
+            RedirectAttributes redirectAttributes,
+            Model model) {
         try {
-            timetableService.reassignRoom(courseId, roomId, dayOfWeek, startTime, endTime, auth);
-            redirectAttributes.addFlashAttribute("success", "Room reassigned successfully!");
-        } catch (ConflictException | IllegalArgumentException e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            timetableService.reassignCourse(courseId, dayOfWeek, startTime, endTime, roomId, auth);
+            redirectAttributes.addFlashAttribute("success", "Course reassigned successfully");
+            return "redirect:/overseer/timetable";
+        } catch (IllegalArgumentException e) {
+            // Log the exception to confirm this path is executed
+            System.out.println("Caught IllegalArgumentException: " + e.getMessage());
+
+            String errorMessage = e.getMessage();
+            if (errorMessage.contains("End time must be after start time.")) {
+                model.addAttribute("error", "Error reassigning course: End time must be after start time.");
+            } else if (errorMessage.contains("Room capacity")) {
+                model.addAttribute("error", "Error reassigning course: Room capacity is less than the number of students.");
+            } else {
+                model.addAttribute("error", "Error reassigning course: " + e.getMessage());
+            }
+            // Repopulate the model for the view
+            Course course = timetableService.getCourseById(courseId, auth);
+            Long initialBuildingId = (course.getRoom() != null && course.getRoom().getBuilding() != null)
+                    ? course.getRoom().getBuilding().getId()
+                    : null;
+            List<RoomDTO> rooms = timetableService.getAvailableRooms(course, null, null, null, initialBuildingId);
+            List<DayOfWeek> daysOfWeek = Arrays.asList(DayOfWeek.values());
+            List<Building> buildings = buildingRepository.findAll();
+
+            model.addAttribute("course", course);
+            model.addAttribute("rooms", rooms);
+            model.addAttribute("daysOfWeek", daysOfWeek);
+            model.addAttribute("buildings", buildings);
+            model.addAttribute("selectedDayOfWeek", dayOfWeek);
+            model.addAttribute("selectedStartTime", startTime);
+            model.addAttribute("selectedEndTime", endTime);
+            model.addAttribute("selectedRoomId", roomId);
+            return "overseer-reassign-course";
+        } catch (Exception e) {
+            // Log the exception to confirm this path is executed
+            System.out.println("Caught Exception: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error reassigning course: " + e.getMessage());
+            return "redirect:/overseer/timetable";
         }
-        return "redirect:/overseer/reassign-room";
+    }
+
+    @GetMapping("/overseer/available-rooms")
+    @ResponseBody
+    public List<RoomDTO> getAvailableRooms(
+            @RequestParam Long courseId,
+            @RequestParam(required = false) String dayOfWeek,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(required = false) Long buildingId,
+            Authentication auth) {
+        Course course = timetableService.getCourseById(courseId, auth);
+        return timetableService.getAvailableRooms(course, dayOfWeek, startTime, endTime, buildingId);
     }
 
     @GetMapping("/overseer/finalize-timetable")
