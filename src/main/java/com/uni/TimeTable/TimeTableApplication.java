@@ -14,7 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 public class TimeTableApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(TimeTableApplication.class, args);
+	SpringApplication.run(TimeTableApplication.class, args);
 	}
 }
 

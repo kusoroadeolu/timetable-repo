@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -26,6 +27,7 @@ public class TimetableService {
     private final LecturerRepository lecturerRepository;
     private final CourseDefinitionRepository courseDefinitionRepository;
     private final RoomRepository roomRepository;
+    private final CoordinatorRepository coordinatorRepository;
 
     @Transactional
     public void scheduleTimetable(
@@ -288,9 +290,6 @@ public class TimetableService {
 //        return courses;
 //    }
 
-    public List<CoordinatorAssignment> getCoordinatorAssignments(Authentication auth) {
-        return new ArrayList<>();
-    }
 
     @Transactional(readOnly = true)
     public List<RoomDTO> getAvailableRooms(Course course, String dayOfWeek, String startTime, String endTime, Long buildingId) {
@@ -335,6 +334,27 @@ public class TimetableService {
         }
         return courseDefinitionRepository.findCourseDefinitionsByDepartmentIdAndYearAndCourseStatus(
                 departmentId, year, Course.CourseInstanceStatus.FINALIZED);
+    }
+
+    public List<CoordinatorAssignment> getCoordinatorAssignments(Authentication auth) {
+        if (auth == null || auth.getName() == null) {
+            return Collections.emptyList();
+        }
+
+        String username = auth.getName();
+        Coordinator coordinator = coordinatorRepository.findByUsernameWithAssignments(username)
+                .orElse(null);
+        if (coordinator == null) {
+            return Collections.emptyList();
+        }
+
+        List<CoordinatorAssignment> assignments = coordinator.getAssignments();
+        if (assignments == null) {
+            return Collections.emptyList();
+        }
+        return assignments.stream()
+                .filter(a -> a.getDepartment() != null)
+                .collect(Collectors.toList());
     }
 
     public List<Course> getTimetable(Long schoolId, Long departmentId, Integer year, String dayOfWeek, Authentication auth) {

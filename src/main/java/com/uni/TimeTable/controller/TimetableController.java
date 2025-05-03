@@ -1113,6 +1113,7 @@ public class TimetableController {
             @RequestParam(required = false) String dayOfWeek,
             Authentication auth, Model model) {
         List<CoordinatorAssignment> assignments = timetableService.getCoordinatorAssignments(auth);
+        System.out.println("Assignments for " + auth.getName() + ": " + assignments); // Debug log
         if (assignments == null || assignments.isEmpty()) {
             model.addAttribute("error", "No assignments found for this coordinator.");
             return "coordinator-view-timetable";
