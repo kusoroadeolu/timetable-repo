@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -19,7 +20,7 @@ import java.io.IOException;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private final UserDetailsService userDetailsService;
+        private final UserDetailsService userDetailsService;
 
     public SecurityConfig(UserDetailsService userDetailsService) {
         this.userDetailsService = userDetailsService;
@@ -45,7 +46,7 @@ public class SecurityConfig {
                         .logoutSuccessUrl("/login?logout")
                         .permitAll()
                 )
-                .csrf(csrf -> csrf.disable());
+                .csrf(AbstractHttpConfigurer::disable);
 
         return http.build();
     }
@@ -59,7 +60,7 @@ public class SecurityConfig {
                 // Spring Security authorities include the "ROLE_" prefix
                 String role = authentication.getAuthorities().iterator().next().getAuthority();
                 if ("ROLE_OVERSEER".equals(role)) {
-                    response.sendRedirect("/overseer/timetable");
+                    response.sendRedirect("/overseer/dashboard");
                 } else if ("ROLE_COORDINATOR".equals(role)) {
                     response.sendRedirect("/coordinator/view-timetable");
                 } else {

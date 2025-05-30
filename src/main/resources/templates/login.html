@@ -1,74 +1,89 @@
-<!--<!DOCTYPE html>-->
-<!--<html xmlns:th="http://www.thymeleaf.org">-->
-<!--<head>-->
-<!--    <title>Login</title>-->
-<!--    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">-->
-<!--</head>-->
-<!--<body>-->
-<!--<div class="container mt-5">-->
-<!--    <h2>Login</h2>-->
-<!--    <div th:if="${param.error}" class="alert alert-danger">-->
-<!--        Invalid username or password.-->
-<!--    </div>-->
-<!--    <div th:if="${param.logout}" class="alert alert-success">-->
-<!--        You have been logged out.-->
-<!--    </div>-->
-<!--    <form th:action="@{/login}" method="post" class="w-50">-->
-<!--        <div class="mb-3">-->
-<!--            <label class="form-label">Username</label>-->
-<!--            <input type="text" name="username" class="form-control" required>-->
-<!--        </div>-->
-<!--        <div class="mb-3">-->
-<!--            <label class="form-label">Password</label>-->
-<!--            <input type="password" name="password" class="form-control" required>-->
-<!--        </div>-->
-<!--        <button type="submit" class="btn btn-primary">Login</button>-->
-<!--    </form>-->
-<!--</div>-->
-<!--</body>-->
-<!--</html>-->
-
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <title>Login</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            background-color: #f8f9fa;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .login-container {
-            max-width: 400px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        }
-    </style>
+    <meta charset="UTF-8">
+    <title>Login - Pan Atlantic University</title>
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="" />
+    <link
+            rel="stylesheet"
+            as="style"
+            onload="this.rel='stylesheet'"
+            href="https://fonts.googleapis.com/css2?display=swap&family=Noto+Sans%3Awght%40400%3B500%3B700%3B900&family=Public+Sans%3Awght%40400%3B500%3B700%3B900"
+    />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 </head>
 <body>
-<div class="container mt-5">
-    <div class="login-container">
-        <h2 class="text-center mb-4">Login</h2>
-        <div th:if="${param.error}" class="alert alert-danger">
-            Invalid username or password.
-        </div>
-        <div th:if="${param.logout}" class="alert alert-success">
-            You have been logged out.
-        </div>
-        <form th:action="@{/login}" method="post">
-            <div class="mb-3">
-                <label class="form-label">Username</label>
-                <input type="text" name="username" class="form-control" required>
+<div
+        class="relative flex size-full min-h-screen flex-col bg-slate-50 group/design-root overflow-x-hidden"
+        style='font-family: "Public Sans", "Noto Sans", sans-serif;'
+>
+    <div class="layout-container flex h-full grow flex-col">
+        <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#e7edf3] px-10 py-3">
+            <div class="flex items-center gap-4 text-[#0e141b]">
+                <div class="size-4">
+                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                                d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z"
+                                fill="currentColor"
+                        ></path>
+                    </svg>
+                </div>
+                <h2 class="text-[#0e141b] text-lg font-bold leading-tight tracking-[-0.015em]">Acme University</h2>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Password</label>
-                <input type="password" name="password" class="form-control" required>
+        </header>
+        <div class="px-40 flex flex-1 justify-center py-5">
+            <div class="layout-content-container flex flex-col w-[512px] max-w-[512px] py-5 max-w-[960px] flex-1">
+                <div class="@container">
+                    <div class="@[480px]:px-4 @[480px]:py-3">
+                        <div
+                                class="w-full bg-center bg-no-repeat bg-cover flex flex-col justify-end overflow-hidden bg-slate-50 @[480px]:rounded-lg min-h-[218px]"
+                                style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuB8t3X4Nm-PePM27w_KnFGIvE7co5cz3fpwFhAmZvGFTcy65UvfwSWp5uPVN9SCtoi5yQhkvtIWzzrJYNWidZ-hZvKbwCZu59FnWkXBvqpHbH9xPrY6cJza9ll6ZLpvSDtg6eMLUqSZtVrktgPQqYZkzucqzZEZTYI9QX1GaNEd04xczofFsLwIjDVEt7QgHB_Xo9WZKCAxpR15-7PtGBDtp7npUHXAgc9zCjbp-gXvph3QBE_Ozky3SEwM64WcOJLYcwDJdnZIA8E");'
+                        ></div>
+                    </div>
+                </div>
+                <h2 class="text-[#0e141b] tracking-light text-[28px] font-bold leading-tight px-4 text-center pb-3 pt-5">Welcome back</h2>
+                <div th:if="${param.error}" class="bg-red-100 text-red-700 p-4 rounded mb-4">
+                    Invalid username or password.
+                </div>
+                <div th:if="${param.logout}" class="bg-green-100 text-green-700 p-4 rounded mb-4">
+                    You have been logged out.
+                </div>
+                <form th:action="@{/login}" method="post">
+                    <div class="flex max-w-[480px] flex-wrap items-end gap-4 px-4 py-3">
+                        <label class="flex flex-col min-w-40 flex-1">
+                            <input
+                                    placeholder="Username"
+                                    name="username"
+                                    class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e141b] focus:outline-0 focus:ring-0 border border-[#d0dbe7] bg-slate-50 focus:border-[#d0dbe7] h-14 placeholder:text-[#4e7397] p-[15px] text-base font-normal leading-normal"
+                                    required
+                            />
+                        </label>
+                    </div>
+                    <div class="flex max-w-[480px] flex-wrap items-end gap-4 px-4 py-3">
+                        <label class="flex flex-col min-w-40 flex-1">
+                            <input
+                                    type="password"
+                                    placeholder="Password"
+                                    name="password"
+                                    class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e141b] focus:outline-0 focus:ring-0 border border-[#d0dbe7] bg-slate-50 focus:border-[#d0dbe7] h-14 placeholder:text-[#4e7397] p-[15px] text-base font-normal leading-normal"
+                                    required
+                            />
+                        </label>
+                    </div>
+                    <p class="text-[#4e7397] text-sm font-normal leading-normal pb-3 pt-1 px-4 underline">
+                        <a href="/forgot-password">Forgot Password?</a>
+                    </p>
+                    <div class="flex px-4 py-3">
+                        <button
+                                type="submit"
+                                class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-12 px-5 flex-1 bg-[#1672ce] text-slate-50 text-base font-bold leading-normal tracking-[0.015em]"
+                        >
+                            <span class="truncate">Log In</span>
+                        </button>
+                    </div>
+                </form>
             </div>
-            <button type="submit" class="btn btn-primary w-100">Login</button>
-        </form>
+        </div>
     </div>
 </div>
 </body>

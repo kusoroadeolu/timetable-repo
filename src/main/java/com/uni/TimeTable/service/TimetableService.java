@@ -4,6 +4,7 @@ import com.uni.TimeTable.DTO.RoomDTO;
 import com.uni.TimeTable.exception.ConflictException;
 import com.uni.TimeTable.models.*;
 import com.uni.TimeTable.repository.*;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -14,7 +15,6 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,10 +24,11 @@ public class TimetableService {
     private final CourseRepository courseRepository;
     private final DepartmentRepository departmentRepository;
     private final SchoolRepository schoolRepository;
-    private final LecturerRepository lecturerRepository;
     private final CourseDefinitionRepository courseDefinitionRepository;
+    @Getter
     private final RoomRepository roomRepository;
     private final CoordinatorRepository coordinatorRepository;
+    private final ActivityRepository activityRepository;
 
     @Transactional
     public void scheduleTimetable(
@@ -99,22 +100,33 @@ public class TimetableService {
         }
 
         courseRepository.save(newCourse);
+        String activityDescription =  String.format("Course '%s' scheduled in '%s'", newCourse.getCourseDefinition().getName(), newCourse.getRoom().getName());
+        Activity activity = new Activity(activityDescription);
+        activityRepository.save(activity);
+
     }
 
     @Transactional
     public void removeCourse(Long courseId, Authentication auth) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found with ID: " + courseId));
-        if (course.getStatus() != Course.CourseInstanceStatus.DRAFT) {
-            throw new IllegalStateException("Only draft courses can be removed.");
-        }
+//        if (course.getStatus() != Course.CourseInstanceStatus.DRAFT) {
+//            throw new IllegalStateException("Only draft courses can be removed.");
+//        }
+        String activityDescription =  String.format("Course '%s' removed", course.getCourseDefinition().getName());
+        Activity activity = new Activity(activityDescription);
+        activityRepository.save(activity);
         courseRepository.delete(course);
+
     }
 
     @Transactional
     public void reassignCourse(Long courseId, String dayOfWeek, String startTime, String endTime, Long roomId, Authentication auth) throws ConflictException {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found with ID: " + courseId));
+
+        Room oldRoom = course.getRoom();
+
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new IllegalArgumentException("Room not found"));
 
@@ -146,7 +158,7 @@ public class TimetableService {
                 room, parsedDayOfWeek, parsedStartTime, parsedEndTime);
         conflictingRoomCourses.removeIf(c -> c.getId().equals(courseId));
         if (!conflictingRoomCourses.isEmpty()) {
-            Course conflict = conflictingRoomCourses.get(0);
+            Course conflict = conflictingRoomCourses.getFirst();
             throw new ConflictException("Room " + room.getName() + " is already booked for " +
                     conflict.getCourseDefinition().getCode() + " on " + dayOfWeek + " from " +
                     conflict.getStartTime() + " to " + conflict.getEndTime());
@@ -162,6 +174,11 @@ public class TimetableService {
         course.setDayOfWeek(parsedDayOfWeek);
         course.setStartTime(parsedStartTime);
         course.setEndTime(parsedEndTime);
+
+        String activityDescription =  String.format("Reassigned course '%s' from '%s' to '%s'", course.getCourseDefinition().getName(), oldRoom, room.getName());
+        Activity activity = new Activity(activityDescription);
+        activityRepository.save(activity);
+
         courseRepository.save(course);
 
         // Optional: Log the change or trigger notifications for finalized courses
@@ -239,56 +256,6 @@ public class TimetableService {
         }
         return departmentRepository.findBySchoolId(schoolId);
     }
-
-//    public List<Course> getTimetable(Long schoolId, Long departmentId, Integer year, String dayOfWeek, Authentication auth) {
-//        List<Course> courses;
-//        boolean isOverseer = auth != null && auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_OVERSEER"));
-//
-//        if (isOverseer) {
-//            // Overseers see both DRAFT and FINALIZED courses
-//            if (departmentId != null && year != null) {
-//                courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYear(departmentId, year);
-//            } else if (departmentId != null) {
-//                courses = courseRepository.findByCourseDefinitionDepartmentId(departmentId);
-//            } else if (year != null) {
-//                courses = courseRepository.findByCourseDefinitionYear(year);
-//            } else {
-//                courses = courseRepository.findAll();
-//            }
-//        } else {
-//            // Non-overseers see only FINALIZED courses
-//            Course.CourseInstanceStatus statusFilter = Course.CourseInstanceStatus.FINALIZED;
-//            if (departmentId != null && year != null) {
-//                courses = courseRepository.findByCourseDefinitionDepartmentIdAndCourseDefinitionYearAndStatus(
-//                        departmentId, year, statusFilter);
-//            } else if (departmentId != null) {
-//                courses = courseRepository.findByCourseDefinitionDepartmentIdAndStatus(
-//                        departmentId, statusFilter);
-//            } else if (year != null) {
-//                courses = courseRepository.findByCourseDefinitionYearAndStatus(
-//                        year, statusFilter);
-//            } else {
-//                courses = courseRepository.findByStatus(statusFilter);
-//            }
-//        }
-//
-//        // Apply schoolId filter if provided
-//        if (schoolId != null) {
-//            courses = courses.stream()
-//                    .filter(course -> course.getCourseDefinition().getDepartment().getSchool().getId().equals(schoolId))
-//                    .collect(Collectors.toList());
-//        }
-//
-//        // Apply dayOfWeek filter if provided
-//        if (dayOfWeek != null && !dayOfWeek.isEmpty()) {
-//            Course.DayOfWeek parsedDayOfWeek = Course.DayOfWeek.valueOf(dayOfWeek);
-//            courses = courses.stream()
-//                    .filter(course -> course.getDayOfWeek() == parsedDayOfWeek)
-//                    .collect(Collectors.toList());
-//        }
-//
-//        return courses;
-//    }
 
 
     @Transactional(readOnly = true)
@@ -376,4 +343,6 @@ public class TimetableService {
 
         return courses;
     }
+
+
 }
